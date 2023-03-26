@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { keyBy, sortBy, partition, sumBy, uniq, groupBy, max } from 'lodash'
+import { sortBy, partition, sumBy, max, uniqBy, Dictionary } from 'lodash'
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/solid'
 
@@ -12,11 +12,7 @@ import {
 } from 'common/util/format'
 import { Col } from '../layout/col'
 import { Spacer } from '../layout/spacer'
-import {
-  Contract,
-  contractPath,
-  getBinaryProbPercent,
-} from 'web/lib/firebase/contracts'
+import { Contract, getBinaryProbPercent } from 'web/lib/firebase/contracts'
 import { Row } from '../layout/row'
 import { sellBet } from 'web/lib/firebase/api'
 import { ConfirmationButton } from '../buttons/confirmation-button'
@@ -29,12 +25,12 @@ import {
   getOutcomeProbability,
   resolvedPayout,
 } from 'common/calculate'
-import { DPMContract, NumericContract } from 'common/contract'
+import { DPMContract, NumericContract, contractPath } from 'common/contract'
 import { formatNumericProbability } from 'common/pseudo-numeric'
 import { useUser } from 'web/hooks/use-user'
 import { LimitBet } from 'common/bet'
 import { Pagination } from '../widgets/pagination'
-import { LimitOrderTable } from './limit-bets'
+import { OrderTable } from './limit-bets'
 import { UserLink } from 'web/components/widgets/user-link'
 import { BetsSummary } from './bet-summary'
 import { ProfitBadge } from '../profit-badge'
@@ -49,15 +45,26 @@ import {
   calculateDpmSaleAmount,
   getDpmProbabilityAfterSale,
 } from 'common/calculate-dpm'
-import { getUserContractMetrics } from 'web/lib/supabase/contract-metrics'
+import { getUserContractMetricsWithContracts } from 'common/supabase/contract-metrics'
 import { ContractMetric } from 'common/contract-metric'
-import { buildArray, filterDefined } from 'common/util/array'
+import { buildArray } from 'common/util/array'
 import { useBets } from 'web/hooks/use-bets'
 import { formatTimeShort } from 'web/lib/util/time'
-import { getContracts } from 'web/lib/supabase/contracts'
-import { getBets } from 'web/lib/supabase/bets'
+import { getOpenLimitOrdersWithContracts } from 'web/lib/supabase/bets'
+import { Input } from 'web/components/widgets/input'
+import { searchInAny } from 'common/util/parse'
+import { useContract } from 'web/hooks/use-contracts'
+import { AddFundsButton } from '../profile/add-funds-button'
+import { db } from 'web/lib/supabase/db'
 
-type BetSort = 'newest' | 'profit' | 'loss' | 'closeTime' | 'value'
+type BetSort =
+  | 'newest'
+  | 'profit'
+  | 'loss'
+  | 'closeTime'
+  | 'value'
+  | 'liquidity'
+
 type BetFilter = 'open' | 'limit_bet' | 'sold' | 'closed' | 'resolved' | 'all'
 
 const CONTRACTS_PER_PAGE = 50
@@ -68,51 +75,53 @@ export function BetsList(props: { user: User }) {
   const signedInUser = useUser()
   const isYourBets = user.id === signedInUser?.id
 
-  const [metrics, setMetrics] = usePersistentState<
-    ContractMetric[] | undefined
+  const [metricsByContract, setMetricsByContract] = usePersistentState<
+    Dictionary<ContractMetric> | undefined
   >(undefined, {
     key: `user-contract-metrics-${user.id}`,
     store: inMemoryStore(),
   })
 
-  useEffect(() => {
-    getUserContractMetrics(user.id).then(setMetrics)
-  }, [user.id, setMetrics])
-
-  const [openLimitBets, setOpenLimitBets] = useState<LimitBet[]>([])
-  useEffect(() => {
-    getBets({ userId: user.id, isOpenLimitOrder: true, limit: 1000 }).then(
-      setOpenLimitBets
-    )
-  }, [user.id])
-  const limitBetsByContract = useMemo(
-    () => groupBy(openLimitBets ?? [], (b) => b.contractId),
-    [openLimitBets]
-  )
-  const contractIds = useMemo(
-    () =>
-      uniq(
-        buildArray(
-          (metrics ?? []).map((m) => m.contractId),
-          Object.keys(limitBetsByContract)
-        )
-      ),
-    [metrics, limitBetsByContract]
-  )
-  const [loadingContracts, setLoadingContracts] = useState<
+  const [initialContracts, setInitialContracts] = usePersistentState<
     Contract[] | undefined
-  >(undefined)
+  >(undefined, {
+    key: `user-contract-metrics-contracts-${user.id}`,
+    store: inMemoryStore(),
+  })
+
+  const [openLimitBetsByContract, setOpenLimitBetsByContract] =
+    usePersistentState<Dictionary<LimitBet[]> | undefined>(undefined, {
+      key: `user-open-limit-bets-${user.id}`,
+      store: inMemoryStore(),
+    })
+
   useEffect(() => {
-    if (!metrics) return
-    getContracts(contractIds).then(setLoadingContracts)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractIds.length, metrics])
+    getUserContractMetricsWithContracts(user.id, db, 5000).then(
+      (metricsWithContracts) => {
+        const { contracts, metricsByContract } = metricsWithContracts
+        setMetricsByContract(metricsByContract)
+        setInitialContracts((c) =>
+          uniqBy(buildArray([...(c ?? []), ...contracts]), 'id')
+        )
+      }
+    )
+  }, [user.id, setMetricsByContract, setInitialContracts])
+
+  useEffect(() => {
+    getOpenLimitOrdersWithContracts(user.id, 5000).then((betsWithContracts) => {
+      const { contracts, betsByContract } = betsWithContracts
+      setOpenLimitBetsByContract(betsByContract)
+      setInitialContracts((c) =>
+        uniqBy(buildArray([...(c ?? []), ...contracts]), 'id')
+      )
+    })
+  }, [setInitialContracts, setOpenLimitBetsByContract, user.id])
 
   const [sort, setSort] = usePersistentState<BetSort>('newest', {
     key: 'bets-list-sort',
     store: inMemoryStore(),
   })
-  const [filter, setFilter] = usePersistentState<BetFilter>('all', {
+  const [filter, setFilter] = usePersistentState<BetFilter>('open', {
     key: 'bets-list-filter',
     store: inMemoryStore(),
   })
@@ -120,6 +129,7 @@ export function BetsList(props: { user: User }) {
     key: 'portfolio-page',
     store: inMemoryStore(),
   })
+  const [query, setQuery] = useState('')
 
   const onSetSort = (s: BetSort) => {
     setSort(s)
@@ -134,19 +144,40 @@ export function BetsList(props: { user: User }) {
   const start = page * CONTRACTS_PER_PAGE
   const end = start + CONTRACTS_PER_PAGE
 
-  if (!metrics || !openLimitBets || !loadingContracts) {
+  const nullableMetricsByContract = useMemo(() => {
+    if (!metricsByContract || !initialContracts) {
+      return undefined
+    }
+    // check if we have any contracts that don't have contractMEtrics, if so, add them in as getContractBetNullMetrics
+    const missingContracts = initialContracts.filter(
+      (c) => !metricsByContract[c.id]
+    )
+    const missingMetrics = Object.fromEntries(
+      missingContracts.map((c) => [c.id, getContractBetNullMetrics()])
+    )
+
+    return {
+      ...metricsByContract,
+      ...missingMetrics,
+    }
+  }, [JSON.stringify(initialContracts), metricsByContract])
+
+  if (
+    !nullableMetricsByContract ||
+    !openLimitBetsByContract ||
+    !initialContracts
+  ) {
     return <LoadingIndicator />
   }
-  if (metrics.length === 0) return <NoBets user={user} />
+  if (Object.keys(nullableMetricsByContract).length === 0)
+    return <NoBets user={user} />
 
-  const contracts = filterDefined(loadingContracts)
-  const initialMetricsByContract = keyBy(metrics, (m) => m.contractId)
-  const metricsByContract = Object.fromEntries(
-    contractIds.map((cid) => [
-      cid,
-      initialMetricsByContract[cid] ?? getContractBetNullMetrics(),
-    ])
-  )
+  const contracts =
+    query !== ''
+      ? initialContracts.filter((c) =>
+          searchInAny(query, ...[c.question, c.creatorName, c.creatorUsername])
+        )
+      : initialContracts
 
   const FILTERS: Record<BetFilter, (c: Contract) => boolean> = {
     resolved: (c) => !!c.resolutionTime,
@@ -157,14 +188,16 @@ export function BetsList(props: { user: User }) {
     sold: () => true,
     limit_bet: (c) => FILTERS.open(c),
   }
+
   const SORTS: Record<BetSort, (c: Contract) => number> = {
-    profit: (c) => metricsByContract[c.id].profit,
-    loss: (c) => -metricsByContract[c.id].profit,
-    value: (c) => metricsByContract[c.id].payout,
+    profit: (c) => nullableMetricsByContract[c.id].profit,
+    loss: (c) => -nullableMetricsByContract[c.id].profit,
+    value: (c) => nullableMetricsByContract[c.id].payout,
     newest: (c) =>
-      metricsByContract[c.id].lastBetTime ??
-      max(limitBetsByContract[c.id]?.map((b) => b.createdTime)) ??
+      nullableMetricsByContract[c.id].lastBetTime ??
+      max(openLimitBetsByContract[c.id]?.map((b) => b.createdTime)) ??
       0,
+    liquidity: (c) => -c.elasticity ?? 1,
     closeTime: (c) =>
       // This is in fact the intuitive sort direction.
       (filter === 'open' ? -1 : 1) *
@@ -176,37 +209,42 @@ export function BetsList(props: { user: User }) {
     .filter((c) => {
       if (filter === 'all') return true
 
-      const { hasShares } = metricsByContract[c.id]
+      const { hasShares } = nullableMetricsByContract[c.id]
 
       if (filter === 'sold') return !hasShares
-      if (filter === 'limit_bet') return limitBetsByContract[c.id]?.length > 0
+      if (filter === 'limit_bet')
+        return openLimitBetsByContract[c.id]?.length > 0
       return hasShares
     })
+
   const displayedContracts = filteredContracts.slice(start, end)
 
   const unsettled = contracts.filter(
-    (c) => !c.isResolved && metricsByContract[c.id].invested !== 0
+    (c) => !c.isResolved && nullableMetricsByContract[c.id].invested !== 0
   )
 
   const currentInvested = sumBy(
     unsettled,
-    (c) => metricsByContract[c.id].invested
+    (c) => nullableMetricsByContract[c.id].invested
   )
   const currentBetsValue = sumBy(
     unsettled,
-    (c) => metricsByContract[c.id].payout
+    (c) => nullableMetricsByContract[c.id].payout
   )
-  const currentLoan = sumBy(unsettled, (c) => metricsByContract[c.id].loan)
+  const currentLoan = sumBy(
+    unsettled,
+    (c) => nullableMetricsByContract[c.id].loan
+  )
 
   const investedProfitPercent =
     ((currentBetsValue - currentInvested) / (currentInvested + 0.1)) * 100
 
   return (
     <Col>
-      <Col className="justify-between gap-4 sm:flex-row">
-        <Row className="gap-4">
-          <Col>
-            <div className="text-xs text-gray-600 sm:text-sm">
+      <div className="flex flex-wrap justify-between gap-4 max-sm:flex-col">
+        <Row className="mr-2 gap-4">
+          <Col className={'shrink-0'}>
+            <div className="text-ink-600 text-xs sm:text-sm">
               Investment value
             </div>
             <div className="text-lg">
@@ -214,39 +252,54 @@ export function BetsList(props: { user: User }) {
               <ProfitBadge profitPercent={investedProfitPercent} />
             </div>
           </Col>
-          <Col>
-            <div className="text-xs text-gray-600 sm:text-sm">Total loans</div>
+          <Col className={'shrink-0'}>
+            <div className="text-ink-600 text-xs sm:text-sm">Total loans</div>
             <div className="text-lg">{formatMoney(currentLoan)}</div>
           </Col>
+
+          <AddFundsButton
+            userId={user.id}
+            className="ml-2 self-center sm:hidden"
+          />
         </Row>
 
-        <Row className="gap-2">
-          <Select
-            value={filter}
-            onChange={(e) => onSetFilter(e.target.value as BetFilter)}
-          >
-            <option value="open">Active</option>
-            <option value="limit_bet">Limit orders</option>
-            <option value="sold">Sold</option>
-            <option value="closed">Closed</option>
-            <option value="resolved">Resolved</option>
-            <option value="all">All</option>
-          </Select>
+        <div className="flex grow gap-2 max-[480px]:flex-col">
+          <Input
+            placeholder="Search"
+            className={'w-full min-w-[30px]'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <Row className="gap-2">
+            <Select
+              value={filter}
+              onChange={(e) => onSetFilter(e.target.value as BetFilter)}
+              className="!h-full grow py-1"
+            >
+              <option value="open">Active</option>
+              <option value="limit_bet">Limit orders</option>
+              <option value="sold">Sold</option>
+              <option value="closed">Closed</option>
+              <option value="resolved">Resolved</option>
+              <option value="all">All</option>
+            </Select>
+            <Select
+              value={sort}
+              onChange={(e) => onSetSort(e.target.value as BetSort)}
+              className="!h-full grow py-1"
+            >
+              <option value="newest">Recent</option>
+              <option value="value">Value</option>
+              <option value="profit">Profit</option>
+              <option value="loss">Loss</option>
+              <option value="liquidity">High stakes</option>
+              <option value="closeTime">Close date</option>
+            </Select>
+          </Row>
+        </div>
+      </div>
 
-          <Select
-            value={sort}
-            onChange={(e) => onSetSort(e.target.value as BetSort)}
-          >
-            <option value="newest">Recent</option>
-            <option value="value">Value</option>
-            <option value="profit">Profit</option>
-            <option value="loss">Loss</option>
-            <option value="closeTime">Close date</option>
-          </Select>
-        </Row>
-      </Col>
-
-      <Col className="mt-6 divide-y">
+      <Col className="divide-ink-300 mt-6 divide-y">
         {displayedContracts.length === 0 ? (
           <NoMatchingBets />
         ) : (
@@ -255,8 +308,10 @@ export function BetsList(props: { user: User }) {
               <ContractBets
                 key={contract.id}
                 contract={contract}
-                metrics={metricsByContract[contract.id]}
-                displayMetric={sort === 'profit' ? 'profit' : 'value'}
+                metrics={nullableMetricsByContract[contract.id]}
+                displayMetric={
+                  sort === 'profit' || sort === 'loss' ? 'profit' : 'value'
+                }
                 isYourBets={isYourBets}
                 userId={user.id}
               />
@@ -277,23 +332,23 @@ export function BetsList(props: { user: User }) {
 const NoBets = ({ user }: { user: User }) => {
   const me = useUser()
   return (
-    <div className="mx-4 py-4 text-gray-500">
+    <div className="text-ink-500 py-4 text-center">
       {user.id === me?.id ? (
         <>
           You have not made any bets yet.{' '}
-          <SiteLink href="/home" className="underline">
+          <SiteLink href="/home" className="text-primary-500 hover:underline">
             Find a prediction market!
           </SiteLink>
         </>
       ) : (
-        <>{user.name} has not made any public bets yet.</>
+        <>{user.name} has not made any bets yet</>
       )}
     </div>
   )
 }
 const NoMatchingBets = () => (
-  <div className="mx-4 py-4 text-gray-500">
-    No bets matching the current filter.
+  <div className="text-ink-500 py-4 text-center">
+    No bets matching the current filter
   </div>
 )
 
@@ -304,7 +359,8 @@ function ContractBets(props: {
   isYourBets: boolean
   userId: string
 }) {
-  const { contract, metrics, displayMetric, isYourBets, userId } = props
+  const { metrics, displayMetric, isYourBets, userId } = props
+  const contract = useContract(props.contract.id) ?? props.contract
   const { resolution, closeTime, outcomeType, isResolved } = contract
 
   const user = useUser()
@@ -330,7 +386,7 @@ function ContractBets(props: {
   const { payout, profit, profitPercent } = metrics
 
   return (
-    <div tabIndex={0} className="relative bg-white p-4 pr-6">
+    <div tabIndex={0} className="bg-canvas-0 relative p-4 pr-6">
       <Row
         className="cursor-pointer flex-wrap gap-2"
         onClick={() => setCollapsed((collapsed) => !collapsed)}
@@ -339,7 +395,7 @@ function ContractBets(props: {
           <Row className="mr-2 max-w-lg">
             <Link
               href={contractPath(contract)}
-              className="font-medium text-indigo-700 hover:underline hover:decoration-indigo-400 hover:decoration-2"
+              className="text-primary-700 hover:decoration-primary-400 font-medium hover:underline hover:decoration-2"
               onClick={(e) => e.stopPropagation()}
             >
               {contract.question}
@@ -353,7 +409,7 @@ function ContractBets(props: {
             )}
           </Row>
 
-          <Row className="flex-1 items-center gap-2 text-sm text-gray-500">
+          <Row className="text-ink-500 flex-1 items-center gap-2 text-sm">
             {resolution ? (
               <>
                 <div>
@@ -391,11 +447,12 @@ function ContractBets(props: {
       </Row>
 
       {!collapsed && (
-        <div className="bg-white">
+        <div className="bg-canvas-0">
           <BetsSummary
             className="mt-8 mr-5 flex-1 sm:mr-8"
             contract={contract}
             metrics={metrics}
+            hideTweet
           />
 
           {isYourBets &&
@@ -406,13 +463,14 @@ function ContractBets(props: {
                 className="mt-4 items-start"
                 contract={contract}
                 user={user}
+                showTweet
               />
             )}
 
           {contract.mechanism === 'cpmm-1' && limitBets.length > 0 && (
             <div className="max-w-md">
-              <div className="mt-4 bg-gray-50 px-4 py-2">Limit orders</div>
-              <LimitOrderTable
+              <div className="bg-canvas-0 mt-4 px-4 py-2">Limit orders</div>
+              <OrderTable
                 contract={contract}
                 limitBets={limitBets}
                 isYou={isYourBets}
@@ -420,7 +478,7 @@ function ContractBets(props: {
             </div>
           )}
 
-          <div className="mt-4 bg-gray-50 px-4 py-2">Bets</div>
+          <div className="bg-canvas-0 mt-4 px-4 py-2">Bets</div>
           {bets ? (
             <ContractBetsTable
               contract={contract}
@@ -482,7 +540,7 @@ export function ContractBetsTable(props: {
     <div className="overflow-x-auto">
       {amountRedeemed > 0 && (
         <>
-          <div className="pl-2 text-sm text-gray-500">
+          <div className="text-ink-500 pl-2 text-sm">
             {isCPMM2 ? (
               <>
                 {amountRedeemed} shares of each outcome redeemed for{' '}
@@ -502,7 +560,7 @@ export function ContractBetsTable(props: {
 
       {!isResolved && amountLoaned > 0 && (
         <>
-          <div className="pl-2 text-sm text-gray-500">
+          <div className="text-ink-500 pl-2 text-sm">
             {isYourBets ? (
               <>You currently have a loan of {formatMoney(amountLoaned)}.</>
             ) : (
@@ -621,7 +679,7 @@ function BetRow(props: {
 
   return (
     <tr>
-      <td className="text-gray-700">
+      <td className="text-ink-700">
         {isYourBet &&
           isDPM &&
           !isNumeric &&

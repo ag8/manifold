@@ -66,6 +66,7 @@ export function SellPanel(props: {
   const soldShares = Math.min(sellQuantity, shares)
   const saleFrac = soldShares / shares
   const loanPaid = saleFrac * loanAmount
+  const isLoadPaid = loanPaid === 0
 
   const { invested } = getContractBetMetrics(contract, userBets)
   const costBasis = invested * saleFrac
@@ -119,8 +120,9 @@ export function SellPanel(props: {
   const profit = saleValue - costBasis
   const resultProb = getCpmmProbability(cpmmState.pool, cpmmState.p)
 
-  const getValue = getMappedValue(contract)
-  const rawDifference = Math.abs(getValue(resultProb) - getValue(initialProb))
+  const rawDifference = Math.abs(
+    getMappedValue(contract, resultProb) - getMappedValue(contract, initialProb)
+  )
   const displayedDifference =
     contract.outcomeType === 'PSEUDO_NUMERIC'
       ? formatLargeNumber(rawDifference)
@@ -147,7 +149,6 @@ export function SellPanel(props: {
 
   const { outcomeType } = contract
   const isPseudoNumeric = outcomeType === 'PSEUDO_NUMERIC'
-  const format = getFormattedMappedValue(contract)
 
   return (
     <>
@@ -167,36 +168,37 @@ export function SellPanel(props: {
       />
 
       <Col className="mt-3 w-full gap-3 text-sm">
-        <Row className="items-center justify-between gap-2 text-gray-500">
-          Sale amount
-          <span className="text-gray-700">{formatMoney(saleValue)}</span>
+        <Row className="text-ink-500 items-center justify-between gap-2">
+          Sale value
+          <span className="text-ink-700">{formatMoney(saleValue)}</span>
         </Row>
-        <Row className="items-center justify-between gap-2 text-gray-500">
+        {!isLoadPaid && (
+          <Row className="text-ink-500  items-center justify-between gap-2">
+            Loan repayment
+            <span className="text-ink-700">
+              {formatMoney(Math.floor(-loanPaid))}
+            </span>
+          </Row>
+        )}
+        <Row className="text-ink-500 items-center justify-between gap-2">
           Profit
-          <span className="text-gray-700">{formatMoney(profit)}</span>
+          <span className="text-ink-700">{formatMoney(profit)}</span>
         </Row>
         <Row className="items-center justify-between">
-          <div className="text-gray-500">
+          <div className="text-ink-500">
             {isPseudoNumeric ? 'Estimated value' : 'Probability'}
           </div>
           <div>
-            {format(initialProb)}
+            {getFormattedMappedValue(contract, initialProb)}
             <span className="mx-2">→</span>
-            {format(resultProb)}
+            {getFormattedMappedValue(contract, resultProb)}
           </div>
         </Row>
-        {loanPaid !== 0 && (
-          <>
-            <Row className="mt-6 items-center justify-between gap-2 text-gray-500">
-              Loan repayment
-              <span className="text-gray-700">{formatMoney(-loanPaid)}</span>
-            </Row>
-            <Row className="items-center justify-between gap-2 text-gray-500">
-              Net proceeds
-              <span className="text-gray-700">{formatMoney(netProceeds)}</span>
-            </Row>
-          </>
-        )}
+
+        <Row className="text-ink-1000 mt-4 items-center justify-between gap-2 text-xl">
+          Payout
+          <span className="text-ink-700">{formatMoney(netProceeds)}</span>
+        </Row>
       </Col>
 
       <Spacer h={8} />
@@ -209,8 +211,8 @@ export function SellPanel(props: {
         onSubmit={betDisabled ? undefined : submitSell}
         disabled={!!betDisabled}
         size="xl"
-        color="blue"
-        actionLabel={`Sell ${Math.floor(soldShares)} shares`}
+        color="indigo"
+        actionLabel={`Sell ${formatWithCommas(sellQuantity)} shares`}
       />
 
       {wasSubmitted && <div className="mt-4">Sell submitted!</div>}
@@ -234,7 +236,7 @@ const getSaleProbChange = (
     balanceByUserId
   )
   const resultProb = getCpmmProbability(cpmmState.pool, cpmmState.p)
-
-  const getValue = getMappedValue(contract)
-  return Math.abs(getValue(resultProb) - getValue(initialProb))
+  return Math.abs(
+    getMappedValue(contract, resultProb) - getMappedValue(contract, initialProb)
+  )
 }

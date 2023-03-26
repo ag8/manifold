@@ -41,7 +41,7 @@ export default function App() {
         url="/dream"
       />
       <Col>
-        <Col className="mx-auto max-w-lg gap-2 rounded bg-white">
+        <Col className="bg-canvas-0 mx-auto max-w-lg gap-2 rounded">
           <DreamCard onDream={onDream} />
           {imageUrl ? (
             <>
@@ -49,7 +49,10 @@ export default function App() {
               {/* Show the current imageUrl */}
               <Col className="p-6">
                 {/* TODO: Make the sharing experience more viral; use a nicer URL */}
-                <CopyLinkButton url={imageUrl} />
+                <CopyLinkButton
+                  url={imageUrl}
+                  eventTrackingName={'copy dream link'}
+                />
               </Col>
             </>
           ) : (

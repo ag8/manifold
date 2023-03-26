@@ -1,97 +1,114 @@
-import React from 'react'
 import {
-  CashIcon,
-  HomeIcon,
-  SearchIcon,
   BookOpenIcon,
-  ChatIcon,
-  ChartBarIcon,
+  CashIcon,
+  DeviceMobileIcon,
+  HomeIcon,
   LogoutIcon,
-  BeakerIcon,
-  HeartIcon,
-  LightningBoltIcon,
+  ScaleIcon,
+  SearchIcon,
+  MapIcon,
+  MoonIcon,
+  SpeakerphoneIcon,
+  SunIcon,
+  SparklesIcon,
+  StarIcon,
 } from '@heroicons/react/outline'
+// import { GiftIcon, MapIcon, MoonIcon } from '@heroicons/react/solid'
 import clsx from 'clsx'
+import { buildArray } from 'common/util/array'
+import { formatMoney } from 'common/util/format'
+import { capitalize } from 'lodash'
 import Router, { useRouter } from 'next/router'
+import { useContext, useState } from 'react'
+import { AddFundsModal } from 'web/components/add-funds-modal'
+import { AppBadgesOrGetAppButton } from 'web/components/buttons/app-badges-or-get-app-button'
+import { CreateQuestionButton } from 'web/components/buttons/create-question-button'
+import NotificationsIcon from 'web/components/notifications-icon'
+import { DarkModeContext, useIsDarkMode } from 'web/hooks/dark-mode-context'
 import { useUser } from 'web/hooks/use-user'
 import { firebaseLogout } from 'web/lib/firebase/users'
-import { ManifoldLogo } from './manifold-logo'
-import { MenuButton } from './menu'
-import { ProfileSummary } from './profile-menu'
-import NotificationsIcon from 'web/components/notifications-icon'
-import { IS_PRIVATE_MANIFOLD } from 'common/envs/constants'
-import { CreateQuestionButton } from 'web/components/buttons/create-question-button'
+import TrophyIcon from 'web/lib/icons/trophy-icon'
 import { withTracking } from 'web/lib/service/analytics'
-import { buildArray } from 'common/util/array'
+import { MobileAppsQRCodeDialog } from '../buttons/mobile-apps-qr-code-button'
 import { SignInButton } from '../buttons/sign-in-button'
-import { SidebarItem } from './sidebar-item'
-import { MoreButton } from './more-button'
-import { Row } from '../layout/row'
-import { Spacer } from '../layout/spacer'
-import { AppBadgesOrGetAppButton } from 'web/components/buttons/app-badges-or-get-app-button'
-import { RectangleGroup } from 'web/components/icons/outline'
+import { ManifoldLogo } from './manifold-logo'
+import { ProfileSummary } from './profile-menu'
 import { SearchButton } from './search-button'
+import { SidebarItem } from './sidebar-item'
 
 export default function Sidebar(props: {
   className?: string
-  logoSubheading?: string
   isMobile?: boolean
 }) {
-  const { className, logoSubheading, isMobile } = props
+  const { className, isMobile } = props
   const router = useRouter()
   const currentPage = router.pathname
 
   const user = useUser()
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false)
 
-  const navOptions = isMobile ? getMobileNav(!!user) : getDesktopNav(!!user)
-  const bottomNavOptions = bottomNav(!!isMobile, !!user)
+  const { theme, changeTheme } = useContext(DarkModeContext)
+
+  const toggleTheme = () => {
+    changeTheme(theme === 'auto' ? 'dark' : theme === 'dark' ? 'light' : 'auto')
+  }
+
+  const navOptions = isMobile
+    ? getMobileNav(() => setIsAddFundsModalOpen(!isAddFundsModalOpen))
+    : getDesktopNav(!!user, () => setIsModalOpen(true))
+
+  const bottomNavOptions = bottomNav(
+    !!user,
+    theme,
+    useIsDarkMode(),
+    toggleTheme
+  )
 
   const createMarketButton = user && !user.isBannedFromPosting && (
-    <CreateQuestionButton />
+    <CreateQuestionButton key="create-market-button" />
   )
 
   return (
     <nav
       aria-label="Sidebar"
-      className={clsx('flex h-screen flex-col', className)}
+      className={clsx('flex h-screen flex-col xl:ml-2', className)}
     >
-      <ManifoldLogo className="pt-6" twoLine />
-      {logoSubheading && (
-        <Row className="pl-2 text-2xl text-indigo-700 sm:mt-3">
-          {logoSubheading}
-        </Row>
-      )}
-      <Spacer h={6} />
+      <ManifoldLogo className="py-6" twoLine />
 
       {user === undefined && <div className="h-[56px]" />}
-      {user === null && <SignInButton className="mb-3" />}
-      {user === null && (
-        <AppBadgesOrGetAppButton size="md" className={'mb-4'} />
-      )}
 
       {user && !isMobile && <ProfileSummary user={user} />}
 
-      {!isMobile && <SearchButton className="mb-5" />}
+      {user && !isMobile && <SearchButton className="mb-5" />}
 
-      <div className="flex flex-col gap-1">
+      <div className="mb-4 flex flex-col gap-1">
         {navOptions.map((item) => (
-          <SidebarItem key={item.href} item={item} currentPage={currentPage} />
+          <SidebarItem key={item.name} item={item} currentPage={currentPage} />
         ))}
 
-        {!isMobile && (
-          <MenuButton
-            menuItems={getMoreDesktopNavigation(!!user)}
-            buttonContent={<MoreButton />}
-          />
+        <MobileAppsQRCodeDialog
+          key="mobile-apps-qr-code"
+          isModalOpen={isModalOpen}
+          setIsModalOpen={setIsModalOpen}
+        />
+
+        {user === null && (
+          <SignInButton key="sign-in-button" className="mt-3" />
         )}
 
         {createMarketButton}
       </div>
       <div className="mt-auto mb-6 flex flex-col gap-1">
+        {user !== null && <AppBadgesOrGetAppButton hideOnDesktop={true} />}
         {bottomNavOptions.map((item) => (
           <SidebarItem key={item.name} item={item} currentPage={currentPage} />
         ))}
       </div>
+      <AddFundsModal
+        open={isAddFundsModalOpen}
+        setOpen={setIsAddFundsModalOpen}
+      />
     </nav>
   )
 }
@@ -103,76 +120,75 @@ const logout = async () => {
   await Router.replace(Router.asPath)
 }
 
-const getDesktopNav = (loggedIn: boolean) =>
-  buildArray(
-    { name: 'Home', href: '/home', icon: HomeIcon },
-    loggedIn && {
-      name: 'Notifications',
-      href: `/notifications`,
-      icon: NotificationsIcon,
-    },
-
-    !IS_PRIVATE_MANIFOLD && [
-      loggedIn && {
+const getDesktopNav = (loggedIn: boolean, openDownloadApp: () => void) => {
+  if (loggedIn)
+    return buildArray(
+      { name: 'Home', href: '/home', icon: HomeIcon },
+      { name: 'Markets', href: '/markets', icon: ScaleIcon },
+      {
+        name: 'Notifications',
+        href: `/notifications`,
+        icon: NotificationsIcon,
+      },
+      {
         name: 'Leaderboards',
         href: '/leaderboards',
-        icon: ChartBarIcon,
+        icon: TrophyIcon,
       },
-    ]
-  )
-
-function getMoreDesktopNavigation(loggedIn: boolean) {
-  if (IS_PRIVATE_MANIFOLD) {
-    return [{ name: 'Leaderboards', href: '/leaderboards', icon: ChartBarIcon }]
-  }
+      {
+        name: 'Ads',
+        icon: SpeakerphoneIcon,
+        href: '/ad',
+      }
+    )
 
   return buildArray(
-    { name: 'Groups', href: '/groups' },
-    { name: 'Referrals', href: '/referrals' },
-    { name: 'Charity', href: '/charity' },
-    { name: 'Labs', href: '/labs' },
-    // { name: 'Blog', href: 'https://news.manifold.markets' },
-    { name: 'Discord', href: 'https://discord.gg/eHQBNBqXuh' },
+    { name: 'Home', href: '/', icon: HomeIcon },
+    { name: 'Markets', href: '/markets', icon: ScaleIcon },
     {
-      name: 'Help & About',
-      href: 'https://help.manifold.markets/',
-    },
-    loggedIn && { name: 'Sign out', onClick: logout }
-  )
-}
-
-const getMobileNav = (loggedIn: boolean) => {
-  if (IS_PRIVATE_MANIFOLD) {
-    return [{ name: 'Leaderboards', href: '/leaderboards', icon: ChartBarIcon }]
-  }
-  return buildArray(
-    { name: 'Search Markets', href: '/search', icon: SearchIcon },
-    { name: 'Leaderboards', href: '/leaderboards', icon: ChartBarIcon },
-    loggedIn && {
-      name: 'Groups',
-      href: '/groups',
-      icon: RectangleGroup,
-    },
-    { name: 'Referrals', href: '/referrals', icon: LightningBoltIcon },
-    loggedIn && { name: 'Get mana', href: '/add-funds', icon: CashIcon },
-    { name: 'Charity', href: '/charity', icon: HeartIcon },
-    { name: 'Labs', href: '/labs', icon: BeakerIcon }
-  )
-}
-
-const bottomNav = (isMobile: boolean, loggedIn: boolean) =>
-  buildArray(
-    !IS_PRIVATE_MANIFOLD &&
-      isMobile && {
-        name: 'Discord',
-        href: 'https://discord.gg/eHQBNBqXuh',
-        icon: ChatIcon,
-      },
-    isMobile && {
-      name: 'Help & About',
-      href: 'https://help.manifold.markets/',
+      name: 'About',
+      href: '/?showHelpModal=true',
       icon: BookOpenIcon,
     },
-    isMobile &&
-      loggedIn && { name: 'Sign out', icon: LogoutIcon, onClick: logout }
+    { name: 'App', onClick: openDownloadApp, icon: DeviceMobileIcon }
+  )
+}
+
+// No sidebar when signed out
+const getMobileNav = (toggleModal: () => void) => {
+  return buildArray(
+    { name: 'Search', href: '/find', icon: SearchIcon },
+    { name: 'Leaderboards', href: '/leaderboards', icon: TrophyIcon },
+    { name: 'Get mana', icon: CashIcon, onClick: toggleModal },
+    { name: 'Share with friends', href: '/referrals', icon: StarIcon }, // remove this and I will beat you — SG
+    {
+      name: `Ads - earn ${formatMoney(5)} per view!`,
+      icon: SpeakerphoneIcon,
+      href: '/ad',
+    }
+  )
+}
+
+const bottomNav = (
+  loggedIn: boolean,
+  theme: 'light' | 'dark' | 'auto',
+  isDarkMode: boolean,
+  toggleTheme: () => void
+) =>
+  buildArray(
+    {
+      name:
+        theme === 'auto'
+          ? `Auto (${isDarkMode ? 'dark' : 'light'})`
+          : capitalize(theme),
+      icon:
+        theme === 'light'
+          ? SunIcon
+          : theme === 'dark'
+          ? MoonIcon
+          : SparklesIcon,
+      onClick: toggleTheme,
+    },
+    { name: 'Sitemap', href: '/sitemap', icon: MapIcon },
+    loggedIn && { name: 'Sign out', icon: LogoutIcon, onClick: logout }
   )

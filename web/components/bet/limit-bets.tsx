@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { LimitBet } from 'common/bet'
 import { CPMMBinaryContract, PseudoNumericContract } from 'common/contract'
 import { getFormattedMappedValue } from 'common/pseudo-numeric'
@@ -11,13 +12,20 @@ import { Button } from '../buttons/button'
 import { Col } from '../layout/col'
 import { Modal } from '../layout/modal'
 import { Row } from '../layout/row'
-import { BinaryOutcomeLabel, PseudoNumericOutcomeLabel } from '../outcome-label'
+import {
+  BinaryOutcomeLabel,
+  NoLabel,
+  PseudoNumericOutcomeLabel,
+  YesLabel,
+} from '../outcome-label'
 import { Subtitle } from '../widgets/subtitle'
 import { Table } from '../widgets/table'
 import { Title } from '../widgets/title'
 import { Tooltip } from '../widgets/tooltip'
+import { InfoTooltip } from '../widgets/info-tooltip'
+import { DepthChart } from '../charts/contract/depth-chart'
 
-export function LimitBets(props: {
+export function YourOrders(props: {
   contract: CPMMBinaryContract | PseudoNumericContract
   bets: LimitBet[]
   className?: string
@@ -31,47 +39,26 @@ export function LimitBets(props: {
     (bet) => bet.createdTime
   )
 
+  if (yourBets.length === 0) return null
+
   return (
-    <Col className={className}>
-      {yourBets.length === 0 && (
-        <OrderBookButton
-          className="self-end"
-          limitBets={bets}
-          contract={contract}
-        />
-      )}
+    <Col className={clsx(className, 'gap-2 overflow-hidden')}>
+      <Row className="items-center justify-between">
+        <Subtitle className="!my-0">Your orders</Subtitle>
+      </Row>
 
-      {yourBets.length > 0 && (
-        <Col
-          className={'mt-4 gap-2 overflow-hidden rounded bg-white py-3 sm:px-4'}
-        >
-          <Row className="mt-2 mb-4 items-center justify-between">
-            <Subtitle className="!mt-0 !mb-0" text="Your orders" />
-
-            <OrderBookButton
-              className="self-end"
-              limitBets={bets}
-              contract={contract}
-            />
-          </Row>
-
-          <LimitOrderTable
-            limitBets={yourBets}
-            contract={contract}
-            isYou={true}
-          />
-        </Col>
-      )}
+      <OrderTable limitBets={yourBets} contract={contract} isYou={true} />
     </Col>
   )
 }
 
-export function LimitOrderTable(props: {
+export function OrderTable(props: {
   limitBets: LimitBet[]
   contract: CPMMBinaryContract | PseudoNumericContract
   isYou: boolean
+  side?: 'YES' | 'NO'
 }) {
-  const { limitBets, contract, isYou } = props
+  const { limitBets, contract, isYou, side } = props
   const isPseudoNumeric = contract.outcomeType === 'PSEUDO_NUMERIC'
   const [isCancelling, setIsCancelling] = useState(false)
   const onCancel = () => {
@@ -83,42 +70,60 @@ export function LimitOrderTable(props: {
     )
   }
   return (
-    <Table className="rounded">
-      <thead>
-        <tr>
-          {!isYou && <th></th>}
-          <th>Outcome</th>
-          <th>{isPseudoNumeric ? 'Value' : 'Prob'}</th>
-          <th>Amount</th>
-          {isYou && (
-            <th>
-              <Button
-                loading={isCancelling}
-                size={'2xs'}
-                color={'gray-outline'}
-                onClick={onCancel}
-              >
-                Cancel all
-              </Button>
-            </th>
+    <Col>
+      {side && (
+        <Row className="ml-2">
+          <span className="mr-2">Buy</span>{' '}
+          {side === 'YES' ? <YesLabel /> : <NoLabel />}
+        </Row>
+      )}
+      <Table className="rounded">
+        <thead>
+          {!side && (
+            <tr>
+              {!isYou && <th></th>}
+              <th>Outcome</th>
+              <th>{isPseudoNumeric ? 'Value' : 'Prob'}</th>
+              <th>Amount</th>
+              {isYou && limitBets.length > 1 && (
+                <th>
+                  <Button
+                    loading={isCancelling}
+                    size={'2xs'}
+                    color={'gray-outline'}
+                    onClick={onCancel}
+                    className={'whitespace-normal'}
+                  >
+                    Cancel all
+                  </Button>
+                </th>
+              )}
+            </tr>
           )}
-        </tr>
-      </thead>
-      <tbody>
-        {limitBets.map((bet) => (
-          <LimitBet key={bet.id} bet={bet} contract={contract} isYou={isYou} />
-        ))}
-      </tbody>
-    </Table>
+        </thead>
+        <tbody>
+          {limitBets.map((bet) => (
+            <OrderRow
+              key={bet.id}
+              bet={bet}
+              contract={contract}
+              isYou={isYou}
+              showOutcome={!side}
+            />
+          ))}
+        </tbody>
+      </Table>
+    </Col>
   )
 }
 
-function LimitBet(props: {
+function OrderRow(props: {
   contract: CPMMBinaryContract | PseudoNumericContract
   bet: LimitBet
   isYou: boolean
+  showOutcome?: boolean
 }) {
-  const { contract, bet, isYou } = props
+  const { contract, bet, isYou, showOutcome } = props
   const { orderAmount, amount, limitProb, outcome } = bet
   const isPseudoNumeric = contract.outcomeType === 'PSEUDO_NUMERIC'
 
@@ -147,18 +152,20 @@ function LimitBet(props: {
           </a>
         </td>
       )}
-      <td>
-        <div className="pl-2">
-          {isPseudoNumeric ? (
-            <PseudoNumericOutcomeLabel outcome={outcome as 'YES' | 'NO'} />
-          ) : (
-            <BinaryOutcomeLabel outcome={outcome as 'YES' | 'NO'} />
-          )}
-        </div>
-      </td>
+      {showOutcome && (
+        <td>
+          <div className="pl-2">
+            {isPseudoNumeric ? (
+              <PseudoNumericOutcomeLabel outcome={outcome as 'YES' | 'NO'} />
+            ) : (
+              <BinaryOutcomeLabel outcome={outcome as 'YES' | 'NO'} />
+            )}
+          </div>
+        </td>
+      )}
       <td>
         {isPseudoNumeric
-          ? getFormattedMappedValue(contract)(limitProb)
+          ? getFormattedMappedValue(contract, limitProb)
           : formatPercent(limitProb)}
       </td>
       <td>{formatMoney(orderAmount - amount)}</td>
@@ -193,41 +200,44 @@ export function OrderBookButton(props: {
   )
 
   const yesBets = sortedBets.filter((bet) => bet.outcome === 'YES')
-  const noBets = sortedBets.filter((bet) => bet.outcome === 'NO')
+  const noBets = sortedBets.filter((bet) => bet.outcome === 'NO').reverse()
 
   return (
     <>
       <Button
         className={className}
         onClick={() => setOpen(true)}
+        disabled={limitBets.length === 0}
         size="xs"
-        color="blue"
+        color="indigo"
       >
-        Order book ({limitBets.length})
+        {limitBets.length} orders
       </Button>
 
-      <Modal open={open} setOpen={setOpen} size="lg">
-        <Col className="rounded bg-white p-4 py-6">
-          <Title className="!mt-0" text="Order book" />
-          <Row className="hidden items-start justify-start gap-2 md:flex">
-            <LimitOrderTable
+      <Modal open={open} setOpen={setOpen} size="md">
+        <Col className="bg-canvas-0 rounded p-4 py-6">
+          <Title className="flex">
+            Order book{' '}
+            <InfoTooltip
+              text="List of active limit orders by traders wishing to buy YES or NO at a given probability"
+              className="ml-1 self-center"
+            />
+          </Title>
+          <DepthChart contract={contract} yesBets={yesBets} noBets={noBets} />
+          <Row className="mt-2 items-start justify-around gap-2">
+            <OrderTable
               limitBets={yesBets}
               contract={contract}
               isYou={false}
+              side="YES"
             />
-            <LimitOrderTable
+            <OrderTable
               limitBets={noBets}
               contract={contract}
               isYou={false}
+              side="NO"
             />
           </Row>
-          <Col className="md:hidden">
-            <LimitOrderTable
-              limitBets={sortedBets}
-              contract={contract}
-              isYou={false}
-            />
-          </Col>
         </Col>
       </Modal>
     </>

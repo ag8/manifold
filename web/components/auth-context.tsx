@@ -15,27 +15,31 @@ import { useStateCheckEquality } from 'web/hooks/use-state-check-equality'
 import { AUTH_COOKIE_NAME, TEN_YEARS_SECS } from 'common/envs/constants'
 import { setCookie } from 'web/lib/util/cookie'
 import { UserAndPrivateUser } from 'common/user'
-import {
-  webviewPassUsers,
-  webviewSignOut,
-} from 'web/lib/native/webview-messages'
+import { nativePassUsers, nativeSignOut } from 'web/lib/native/native-messages'
 import { safeLocalStorage } from 'web/lib/util/local'
+import { getSavedContractVisitsLocally } from 'web/hooks/use-save-visits'
+import { getSupabaseToken } from 'web/lib/firebase/api'
+import { updateSupabaseAuth } from 'web/lib/supabase/db'
 
 // Either we haven't looked up the logged in user yet (undefined), or we know
 // the user is not logged in (null), or we know the user is logged in.
-export type AuthUser = undefined | null | UserAndPrivateUser
+export type AuthUser =
+  | undefined
+  | null
+  | (UserAndPrivateUser & { authLoaded: boolean })
 const CACHED_USER_KEY = 'CACHED_USER_KEY_V2'
 
-// Proxy localStorage in case it's not available (eg in incognito iframe)
-const localStorage = safeLocalStorage()
-
 const ensureDeviceToken = () => {
-  let deviceToken = localStorage.getItem('device-token')
+  let deviceToken = safeLocalStorage?.getItem('device-token')
   if (!deviceToken) {
     deviceToken = randomString()
-    localStorage.setItem('device-token', deviceToken)
+    safeLocalStorage?.setItem('device-token', deviceToken)
   }
   return deviceToken
+}
+const getAdminToken = () => {
+  const deviceToken = safeLocalStorage?.getItem('TEST_CREATE_USER_KEY')
+  return deviceToken ?? ''
 }
 
 const stripUserData = (user: object) => {
@@ -61,6 +65,7 @@ export const setUserCookie = (data: object | undefined) => {
 }
 
 export const AuthContext = createContext<AuthUser>(undefined)
+
 export function AuthProvider(props: {
   children: ReactNode
   serverUser?: AuthUser
@@ -70,9 +75,10 @@ export function AuthProvider(props: {
 
   useEffect(() => {
     if (serverUser === undefined) {
-      const cachedUser = localStorage.getItem(CACHED_USER_KEY)
-      const parsed = cachedUser ? JSON.parse(cachedUser) : null
-      setAuthUser(parsed)
+      const cachedUser = safeLocalStorage?.getItem(CACHED_USER_KEY)
+      const parsed = cachedUser ? JSON.parse(cachedUser) : undefined
+      if (parsed) setAuthUser({ ...parsed, authLoaded: false })
+      else setAuthUser(parsed)
     }
   }, [setAuthUser, serverUser])
 
@@ -80,9 +86,9 @@ export function AuthProvider(props: {
     if (authUser) {
       // Persist to local storage, to reduce login blink next time.
       // Note: Cap on localStorage size is ~5mb
-      localStorage.setItem(CACHED_USER_KEY, JSON.stringify(authUser))
+      safeLocalStorage?.setItem(CACHED_USER_KEY, JSON.stringify(authUser))
     } else if (authUser === null) {
-      localStorage.removeItem(CACHED_USER_KEY)
+      safeLocalStorage?.removeItem(CACHED_USER_KEY)
     }
   }, [authUser])
 
@@ -92,24 +98,35 @@ export function AuthProvider(props: {
       async (fbUser) => {
         if (fbUser) {
           setUserCookie(fbUser.toJSON())
-          let current = await getUserAndPrivateUser(fbUser.uid)
-          if (!current.user || !current.privateUser) {
+          const [currentAuthUser, supabaseJwt] = await Promise.all([
+            getUserAndPrivateUser(fbUser.uid),
+            getSupabaseToken(),
+          ])
+          updateSupabaseAuth(supabaseJwt.jwt)
+          if (!currentAuthUser.user || !currentAuthUser.privateUser) {
             const deviceToken = ensureDeviceToken()
-            current = (await createUser({ deviceToken })) as UserAndPrivateUser
-            setCachedReferralInfoForUser(current.user)
+            const adminToken = getAdminToken()
+            const newUser = (await createUser({
+              deviceToken,
+              adminToken,
+              visitedContractIds: getSavedContractVisitsLocally(),
+            })) as UserAndPrivateUser
+            setCachedReferralInfoForUser(currentAuthUser.user)
+            setAuthUser({ ...newUser, authLoaded: true })
+          } else {
+            setAuthUser({ ...currentAuthUser, authLoaded: true })
           }
-          setAuthUser(current)
-          webviewPassUsers(
+          nativePassUsers(
             JSON.stringify({
               fbUser: fbUser.toJSON(),
-              privateUser: current.privateUser,
+              privateUser: currentAuthUser.privateUser,
             })
           )
         } else {
           // User logged out; reset to null
           setUserCookie(undefined)
           setAuthUser(null)
-          webviewSignOut()
+          nativeSignOut()
         }
       },
       (e) => {

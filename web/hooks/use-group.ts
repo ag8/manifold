@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Group } from 'common/group'
+import { Group, GroupMemberDoc } from 'common/group'
 import { User } from 'common/user'
 import {
   getGroup,
   getMemberGroups,
-  GroupMemberDoc,
   groupMembers,
   listenForGroup,
   listenForGroupContractDocs,
@@ -23,9 +22,15 @@ import { useQuery } from 'react-query'
 import { useFirestoreQueryData } from '@react-query-firebase/firestore'
 import { limit, query } from 'firebase/firestore'
 import { useTrendingContracts } from './use-contracts'
-import { storageStore, usePersistentState } from './use-persistent-state'
+import {
+  inMemoryStore,
+  storageStore,
+  usePersistentState,
+} from './use-persistent-state'
 import { safeLocalStorage } from 'web/lib/util/local'
 import { useStoreItems } from './use-store'
+import { getUserIsGroupMember } from 'web/lib/firebase/api'
+import { useIsAuthorized } from './use-user'
 
 export const useGroup = (groupId: string | undefined) => {
   const [group, setGroup] = useState<Group | null | undefined>()
@@ -111,7 +116,7 @@ export function useMemberGroupsSubscription(user: User | null | undefined) {
     undefined,
     {
       key: 'member-groups',
-      store: storageStore(safeLocalStorage()),
+      store: storageStore(safeLocalStorage),
     }
   )
 
@@ -134,7 +139,7 @@ export function useMemberGroupsIdsAndSlugs(userId: string | null | undefined) {
     { id: string; slug: string }[] | undefined
   >(undefined, {
     key: 'member-groups-ids-and-slugs',
-    store: storageStore(safeLocalStorage()),
+    store: storageStore(safeLocalStorage),
   })
 
   useEffect(() => {
@@ -205,4 +210,26 @@ export function useGroupContractIds(groupId: string) {
 
 export function useGroups(groupIds: string[]) {
   return useStoreItems(groupIds, listenForGroup, { loadOnce: true })
+}
+
+export function useIsGroupMember(groupSlug: string) {
+  const [isMember, setIsMember] = usePersistentState<any | undefined>(
+    undefined,
+    {
+      key: 'is-member-' + groupSlug,
+      store: inMemoryStore(),
+    }
+  )
+  const isAuthorized = useIsAuthorized()
+  useEffect(() => {
+    // if there is no user
+    if (isAuthorized === null) {
+      setIsMember(false)
+    } else if (isAuthorized) {
+      getUserIsGroupMember({ groupSlug: groupSlug }).then((result) => {
+        setIsMember(result)
+      })
+    }
+  }, [groupSlug, isAuthorized])
+  return isMember
 }

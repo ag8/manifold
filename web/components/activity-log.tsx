@@ -1,19 +1,26 @@
+import clsx from 'clsx'
 import { ContractComment } from 'common/comment'
 import { Contract } from 'common/contract'
 import { BOT_USERNAMES, DESTINY_GROUP_SLUGS } from 'common/envs/constants'
 import { buildArray, filterDefined } from 'common/util/array'
-import { keyBy, range, groupBy, sortBy } from 'lodash'
+import { groupBy, keyBy, partition, range, sortBy, uniq } from 'lodash'
 import { memo, useEffect, useState } from 'react'
-import { useLiveBets } from 'web/hooks/use-bets'
-import { useLiveComments } from 'web/hooks/use-comments'
-import { useContracts, useLiveContracts } from 'web/hooks/use-contracts'
-import { useMemberGroups } from 'web/hooks/use-group'
+import { useRealtimeBets } from 'web/hooks/use-bets-supabase'
+import { useRealtimeComments } from 'web/hooks/use-comments-supabase'
+import {
+  useContracts,
+  useRealtimeContracts,
+} from 'web/hooks/use-contract-supabase'
 import {
   inMemoryStore,
   usePersistentState,
 } from 'web/hooks/use-persistent-state'
-import { usePrivateUser, useUser } from 'web/hooks/use-user'
-import { getGroupBySlug, getGroupContractIds } from 'web/lib/firebase/groups'
+import {
+  usePrivateUser,
+  useShouldBlockDestiny,
+  useUser,
+} from 'web/hooks/use-user'
+import { getGroupContractIds, getGroupFromSlug } from 'web/lib/supabase/group'
 import { PillButton } from './buttons/pill-button'
 import { ContractMention } from './contract/contract-mention'
 import { FeedBet } from './feed/feed-bets'
@@ -25,19 +32,18 @@ import { Content } from './widgets/editor'
 import { LoadingIndicator } from './widgets/loading-indicator'
 import { UserLink } from './widgets/user-link'
 
-const EXTRA_USERNAMES_TO_EXCLUDE = ['Charlie']
+const EXTRA_USERNAMES_TO_EXCLUDE = ['Charlie', 'GamblingGandalf']
 
-export function ActivityLog(props: { count: number; showPills: boolean }) {
+export function ActivityLog(props: {
+  count: number
+  showPills: boolean
+  className?: string
+}) {
+  const { count, showPills, className } = props
+
   const privateUser = usePrivateUser()
   const user = useUser()
-
-  const memberGroups = useMemberGroups(user?.id)
-  const shouldBlockDestiny =
-    // If signed out, or you don't follow destiny group, block it!
-    !(
-      memberGroups &&
-      memberGroups.some((g) => DESTINY_GROUP_SLUGS.includes(g.slug))
-    )
+  const shouldBlockDestiny = useShouldBlockDestiny(user?.id)
 
   const [blockedGroupContractIds, setBlockedGroupContractIds] =
     usePersistentState<string[] | undefined>(undefined, {
@@ -51,7 +57,7 @@ export function ActivityLog(props: { count: number; showPills: boolean }) {
       shouldBlockDestiny && DESTINY_GROUP_SLUGS
     )
 
-    Promise.all(blockedGroupSlugs.map(getGroupBySlug))
+    Promise.all(blockedGroupSlugs.map((slug) => getGroupFromSlug(slug)))
       .then((groups) =>
         Promise.all(filterDefined(groups).map((g) => getGroupContractIds(g.id)))
       )
@@ -64,10 +70,8 @@ export function ActivityLog(props: { count: number; showPills: boolean }) {
   )
   const blockedUserIds = privateUser?.blockedUserIds ?? []
 
-  const { count, showPills } = props
-  const rawBets = useLiveBets(count * 3 + 20, {
+  const rawBets = useRealtimeBets(count * 3 + 20, {
     filterRedemptions: true,
-    filterAntes: true,
   })
   const bets = (rawBets ?? []).filter(
     (bet) =>
@@ -76,7 +80,7 @@ export function ActivityLog(props: { count: number; showPills: boolean }) {
       !BOT_USERNAMES.includes(bet.userUsername) &&
       !EXTRA_USERNAMES_TO_EXCLUDE.includes(bet.userUsername)
   )
-  const rawComments = useLiveComments(count * 3)
+  const rawComments = useRealtimeComments(count * 3)
   const comments = (rawComments ?? []).filter(
     (c) =>
       c.commentType === 'contract' &&
@@ -84,15 +88,28 @@ export function ActivityLog(props: { count: number; showPills: boolean }) {
       !blockedUserIds.includes(c.userId)
   ) as ContractComment[]
 
-  const rawContracts = useLiveContracts(count * 3)
+  const rawContracts = useRealtimeContracts(count * 3)
   const newContracts = (rawContracts ?? []).filter(
     (c) =>
       !blockedContractIds.includes(c.id) &&
-      !blockedUserIds.includes(c.creatorId)
+      !blockedUserIds.includes(c.creatorId) &&
+      c.visibility === 'public'
   )
 
   const [pill, setPill] = useState<'all' | 'markets' | 'comments' | 'trades'>(
     'all'
+  )
+
+  const allContracts = useContracts(
+    uniq([
+      ...bets.map((b) => b.contractId),
+      ...comments.map((c) => c.contractId),
+    ])
+  )
+
+  const [contracts, unlistedContracts] = partition(
+    filterDefined(allContracts).concat(newContracts ?? []),
+    (c) => c.visibility === 'public'
   )
 
   const items = sortBy(
@@ -106,14 +123,14 @@ export function ActivityLog(props: { count: number; showPills: boolean }) {
     (i) => i.createdTime
   )
     .reverse()
-    .filter((i) => i.createdTime < Date.now())
+    .filter(
+      (i) =>
+        i.createdTime < Date.now() &&
+        ('contractId' in i
+          ? !unlistedContracts.some((c) => c.id === i.contractId)
+          : true)
+    )
 
-  const contracts = filterDefined(
-    useContracts([
-      ...bets.map((b) => b.contractId),
-      ...comments.map((c) => c.contractId),
-    ])
-  ).concat(newContracts ?? [])
   const contractsById = keyBy(contracts, 'id')
 
   const startIndex =
@@ -144,60 +161,71 @@ export function ActivityLog(props: { count: number; showPills: boolean }) {
     items,
   }))
 
-  if (!allLoaded) return <LoadingIndicator />
-
   return (
-    <Col className="gap-4">
+    <Col className={clsx('gap-4', className)}>
       {showPills && (
-        <Row className="gap-2">
-          <PillButton selected={pill === 'all'} onSelect={() => setPill('all')}>
+        <Row className="mx-2 gap-2 sm:mx-0">
+          <PillButton
+            selected={pill === 'all'}
+            onSelect={() => setPill('all')}
+            xs
+          >
             All
           </PillButton>
           <PillButton
             selected={pill === 'markets'}
             onSelect={() => setPill('markets')}
+            xs
           >
             Markets
           </PillButton>
           <PillButton
             selected={pill === 'comments'}
             onSelect={() => setPill('comments')}
+            xs
           >
             Comments
           </PillButton>
           <PillButton
             selected={pill === 'trades'}
             onSelect={() => setPill('trades')}
+            xs
           >
             Trades
           </PillButton>
         </Row>
       )}
-      <Col className="divide-y border">
-        {groups.map(({ contractId, items }) => {
-          const contract = contractsById[contractId] as Contract
-          return (
-            <Col key={contractId} className="gap-2 bg-white px-6 py-4 ">
-              <ContractMention contract={contract} />
-              {items.map((item) =>
-                'amount' in item ? (
-                  <FeedBet
-                    className="!pt-0"
-                    key={item.id}
-                    contract={contract}
-                    bet={item}
-                    avatarSize="xs"
-                  />
-                ) : 'question' in item ? (
-                  <MarketCreatedLog key={item.id} contract={item} />
-                ) : (
-                  <CommentLog key={item.id} comment={item} />
-                )
-              )}
-            </Col>
-          )
-        })}
-      </Col>
+      {!allLoaded && <LoadingIndicator />}
+      {allLoaded && (
+        <Col className="border-ink-300 divide-ink-300 divide-y-[0.5px] rounded-sm border-[0.5px]">
+          {groups.map(({ contractId, items }) => {
+            const contract = contractsById[contractId] as Contract
+            return (
+              <Col
+                key={contractId}
+                className="bg-canvas-0 focus:bg-canvas-100 lg:hover:bg-canvas-100 gap-2 px-4 py-3"
+              >
+                <ContractMention contract={contract} />
+                {items.map((item) =>
+                  'amount' in item ? (
+                    <FeedBet
+                      className="!pt-0"
+                      key={item.id}
+                      contract={contract}
+                      bet={item}
+                      avatarSize="xs"
+                    />
+                  ) : 'question' in item ? (
+                    <MarketCreatedLog key={item.id} contract={item} />
+                  ) : (
+                    <CommentLog key={item.id} comment={item} />
+                  )
+                )}
+              </Col>
+            )
+          })}
+        </Col>
+      )}
     </Col>
   )
 }
@@ -206,7 +234,7 @@ export const MarketCreatedLog = (props: { contract: Contract }) => {
     props.contract
 
   return (
-    <Row className="items-center gap-2 text-sm text-gray-500">
+    <Row className="text-ink-500 items-center gap-2 text-sm">
       <Avatar
         avatarUrl={creatorAvatarUrl}
         username={creatorUsername}
@@ -214,7 +242,7 @@ export const MarketCreatedLog = (props: { contract: Contract }) => {
       />
       <UserLink name={creatorName} username={creatorUsername} />
       <Row>
-        <div className="text-gray-400">created</div>
+        <div className="text-ink-400">created</div>
         <RelativeTimestamp time={createdTime} />
       </Row>
     </Row>
@@ -232,7 +260,7 @@ export const CommentLog = memo(function FeedComment(props: {
     <Col>
       <Row
         id={comment.id}
-        className="mb-1 items-center gap-2 text-sm text-gray-500"
+        className="text-ink-500 mb-1 items-center gap-2 text-sm"
       >
         <Avatar size="xs" username={userUsername} avatarUrl={userAvatarUrl} />
         <div>

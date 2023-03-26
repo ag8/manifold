@@ -15,9 +15,9 @@ export function ProfileSummary(props: { user: User }) {
 
   return (
     <Link
-      href={`/${user.username}?tab=portfolio`}
+      href={`/${user.username}`}
       onClick={trackCallback('sidebar: profile')}
-      className="group mb-3 flex flex-row items-center gap-4 truncate rounded-md py-3 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+      className="text-ink-500 hover:bg-ink-100 hover:text-ink-700 group mb-3 flex flex-shrink-0 flex-row items-center gap-4 rounded-md py-3"
     >
       <Avatar avatarUrl={user.avatarUrl} username={user.username} noLink />
       <div className="truncate">
@@ -25,7 +25,7 @@ export function ProfileSummary(props: { user: User }) {
         <div className="flex items-center text-sm">
           <span className="mr-2">{formatMoney(Math.floor(user.balance))}</span>
           <button
-            className="rounded-md p-1 ring-[1.5px] ring-inset ring-current hover:bg-gray-300"
+            className="hover:bg-ink-300 rounded-md p-1 ring-[1.5px] ring-inset ring-current"
             onClick={(e) => {
               e.preventDefault()
               setBuyModalOpen(true)

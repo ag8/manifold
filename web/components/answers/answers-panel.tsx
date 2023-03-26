@@ -9,7 +9,6 @@ import { tradingAllowed } from 'web/lib/firebase/contracts'
 import { AnswerItem } from './answer-item'
 import { CreateAnswerPanel } from './create-answer-panel'
 import { AnswerResolvePanel } from './answer-resolve-panel'
-import { Spacer } from '../layout/spacer'
 import { getOutcomeProbability } from 'common/calculate'
 import { Answer } from 'common/answer'
 import clsx from 'clsx'
@@ -23,20 +22,22 @@ import { Button } from 'web/components/buttons/button'
 import { useAdmin } from 'web/hooks/use-admin'
 import { CHOICE_ANSWER_COLORS } from '../charts/contract/choice'
 import { useChartAnswers } from '../charts/contract/choice'
+import { GradientContainer } from '../widgets/gradient-container'
 
 export function getAnswerColor(answer: Answer, answersArray: string[]) {
   const colorIndex = answersArray.indexOf(answer.text)
   return colorIndex != undefined && colorIndex < CHOICE_ANSWER_COLORS.length
     ? CHOICE_ANSWER_COLORS[colorIndex]
-    : '#B1B1C7'
+    : '#B1B1C7B3'
 }
 
 export function AnswersPanel(props: {
   contract: FreeResponseContract | MultipleChoiceContract
   onAnswerCommentClick: (answer: Answer) => void
+  showResolver?: boolean
 }) {
   const isAdmin = useAdmin()
-  const { contract, onAnswerCommentClick } = props
+  const { contract, onAnswerCommentClick, showResolver } = props
   const { creatorId, resolution, resolutions, outcomeType } = contract
   const [showAllAnswers, setShowAllAnswers] = useState(false)
 
@@ -124,29 +125,42 @@ export function AnswersPanel(props: {
     (answer, _index) => answer.text
   )
 
+  const answerItemComponents = sortedAnswers.map((answer) => (
+    <AnswerItem
+      key={answer.id}
+      answer={answer}
+      contract={contract}
+      showChoice={showChoice}
+      chosenProb={chosenAnswers[answer.id]}
+      totalChosenProb={chosenTotal}
+      onChoose={onChoose}
+      onDeselect={onDeselect}
+    />
+  ))
+
   return (
     <Col className="gap-3">
-      {(resolveOption || resolution) &&
-        sortedAnswers.map((answer) => (
-          <AnswerItem
-            key={answer.id}
-            answer={answer}
+      {showResolver && (
+        <GradientContainer className="mb-4">
+          <AnswerResolvePanel
+            isAdmin={isAdmin}
+            isCreator={user?.id === creatorId}
             contract={contract}
-            showChoice={showChoice}
-            chosenProb={chosenAnswers[answer.id]}
-            totalChosenProb={chosenTotal}
-            onChoose={onChoose}
-            onDeselect={onDeselect}
+            resolveOption={resolveOption}
+            setResolveOption={setResolveOption}
+            chosenAnswers={chosenAnswers}
           />
-        ))}
+
+          {!!resolveOption && (
+            <Col className="mt-4 gap-3">{answerItemComponents}</Col>
+          )}
+        </GradientContainer>
+      )}
+
+      {resolution && answerItemComponents}
 
       {!resolveOption && (
-        <Col
-          className={clsx(
-            'gap-2 pr-2 md:pr-0',
-            tradingAllowed(contract) ? '' : '-mb-6'
-          )}
-        >
+        <Col className="gap-3">
           {answerItems.map((item) => (
             <OpenAnswer
               key={item.id}
@@ -170,28 +184,15 @@ export function AnswersPanel(props: {
       )}
 
       {answers.length === 0 && (
-        <div className="pb-4 text-gray-500">No answers yet...</div>
+        <div className="text-ink-500 pb-4">No answers yet...</div>
       )}
 
       {outcomeType === 'FREE_RESPONSE' &&
         tradingAllowed(contract) &&
+        !resolveOption &&
         !privateUser?.blockedByUserIds.includes(contract.creatorId) && (
           <CreateAnswerPanel contract={contract} />
         )}
-
-      {(user?.id === creatorId || isAdmin) && !resolution && (
-        <>
-          <Spacer h={2} />
-          <AnswerResolvePanel
-            isAdmin={isAdmin}
-            isCreator={user?.id === creatorId}
-            contract={contract}
-            resolveOption={resolveOption}
-            setResolveOption={setResolveOption}
-            chosenAnswers={chosenAnswers}
-          />
-        </>
-      )}
     </Col>
   )
 }
@@ -214,11 +215,10 @@ function OpenAnswer(props: {
   const isFreeResponse = contract.outcomeType === 'FREE_RESPONSE'
 
   return (
-    <Col className="my-1 px-2">
+    <div>
       <Modal
         open={!!betMode}
         setOpen={(open) => setBetMode(open ? 'buy' : undefined)}
-        position="center"
       >
         {betMode && (
           <AnswerBetPanel
@@ -226,25 +226,25 @@ function OpenAnswer(props: {
             contract={contract}
             mode={betMode}
             closePanel={() => setBetMode(undefined)}
-            className="sm:max-w-84 !rounded-md bg-white !px-8 !py-6"
+            className="sm:max-w-84 bg-canvas-0 text-ink-1000 !rounded-md !px-8 !py-6"
             isModal={true}
           />
         )}
       </Modal>
 
-      <Col
+      <div
         className={clsx(
           'relative w-full rounded-lg transition-all',
-          tradingAllowed(contract) ? 'text-gray-900' : 'text-gray-500'
+          tradingAllowed(contract) ? 'text-ink-900' : 'text-ink-500'
         )}
         style={{
-          background: `linear-gradient(to right, ${color}90 ${colorWidth}%, #FBFBFF ${colorWidth}%)`,
+          background: `linear-gradient(to right, ${color} ${colorWidth}%, #94a3b833 ${colorWidth}%)`,
         }}
       >
-        <Row className="z-20 -mb-1 justify-between gap-2 py-2 px-3">
-          <Row>
+        <Row className="z-20 justify-between gap-2 py-1.5 px-3">
+          <Row className="items-center">
             <Avatar
-              className="mt-0.5 mr-2 inline h-5 w-5 border border-transparent transition-transform hover:border-none"
+              className="mr-2 h-5 w-5 border border-transparent transition-transform hover:border-none"
               username={username}
               avatarUrl={avatarUrl}
             />
@@ -287,12 +287,12 @@ function OpenAnswer(props: {
                 className="p-1"
                 onClick={() => onAnswerCommentClick(answer)}
               >
-                <ChatIcon className="h-5 w-5 text-gray-400 transition-colors hover:text-gray-600" />
+                <ChatIcon className="text-ink-500 hover:text-ink-600 h-5 w-5 transition-colors" />
               </button>
             )}
           </Row>
         </Row>
-      </Col>
-    </Col>
+      </div>
+    </div>
   )
 }

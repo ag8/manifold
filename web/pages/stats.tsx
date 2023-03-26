@@ -5,13 +5,16 @@ import { Spacer } from 'web/components/layout/spacer'
 import { Tabs } from 'web/components/layout/tabs'
 import { Page } from 'web/components/layout/page'
 import { Title } from 'web/components/widgets/title'
-import { SiteLink } from 'web/components/widgets/site-link'
-import { Linkify } from 'web/components/widgets/linkify'
 import { getStats } from 'web/lib/firebase/stats'
 import { Stats } from 'common/stats'
 import { PLURAL_BETS } from 'common/user'
 import { capitalize } from 'lodash'
 import { formatLargeNumber } from 'common/util/format'
+import { formatWithCommas } from 'common/util/format'
+import { InfoBox } from 'web/components/widgets/info-box'
+import { Linkify } from 'web/components/widgets/linkify'
+import { SiteLink } from 'web/components/widgets/site-link'
+import { getIsNative } from 'web/lib/native/is-native'
 
 export default function Analytics() {
   const [stats, setStats] = useState<Stats | undefined>(undefined)
@@ -46,7 +49,6 @@ export function CustomAnalytics(props: Stats) {
     startDate,
     dailyActiveUsers,
     dailyActiveUsersWeeklyAvg,
-    avgDailyUserActions,
     dailySales,
     weeklyActiveUsers,
     monthlyActiveUsers,
@@ -79,20 +81,19 @@ export function CustomAnalytics(props: Stats) {
   const currentDAUs = dailyActiveUsers[dailyActiveUsers.length - 1]
   const avgDAUs =
     dailyActiveUsersWeeklyAvg[dailyActiveUsersWeeklyAvg.length - 1]
+  const last30dSales = dailySales.slice(-30).reduce((a, b) => a + b, 0)
+  const isNative = getIsNative()
 
   return (
     <Col className="px-2 sm:px-0">
-      <Title text="Active users" />
-      <p className="text-gray-500">
+      <Title children="Active users" />
+      <p className="text-ink-500">
         An active user is a user who has traded in, commented on, or created a
         market.
       </p>
-      <div className="mt-2 text-gray-500">
-        Current DAUs:
-        <span className="mx-2 font-bold text-gray-500">
-          {formatLargeNumber(currentDAUs)}
-        </span>
-        ({formatLargeNumber(avgDAUs)} avg)
+      <div className="text-ink-500 mt-2">
+        <b>{formatLargeNumber(currentDAUs)} DAUs</b> yesterday;{' '}
+        {formatLargeNumber(avgDAUs)} avg DAUs last week
       </div>
       <Spacer h={4} />
 
@@ -138,34 +139,31 @@ export function CustomAnalytics(props: Stats) {
           },
         ]}
       />
+      {/* We'd like to embed these in a separate tab, but unfortunately Umami doesn't seem to support iframe embeds atm */}
+      <InfoBox title="" className="bg-ink-100 mt-4">
+        <span>
+          For pageview and visitor stats, see{' '}
+          {isNative ? (
+            <a
+              href={
+                'https://analytics.umami.is/share/ARwUIC9GWLNyowjq/Manifold%20Markets'
+              }
+              className={'text-primary-700'}
+            >
+              our umami page
+            </a>
+          ) : (
+            <Linkify text={'https://manifold.markets/umami'} />
+          )}
+        </span>
+      </InfoBox>
+
       <Spacer h={8} />
 
-      <Title text="Average activity" />
-      <p className="text-gray-500">
-        Median number of DAU-qualifying actions per multi-action user per day.
+      <Title children="Revenue" />
+      <p className="text-ink-500">
+        <b>${formatWithCommas(last30dSales)}</b> of mana sold in the last 30d
       </p>
-
-      <Spacer h={4} />
-
-      <Tabs
-        className="mb-4"
-        defaultIndex={0}
-        tabs={[
-          {
-            title: 'Daily',
-            content: (
-              <DailyChart
-                dailyValues={avgDailyUserActions}
-                startDate={startDate}
-              />
-            ),
-          },
-        ]}
-      />
-      <Spacer h={8} />
-
-      <Title text="Sales" />
-      <p className="text-gray-500">Daily mana sales (in USD)</p>
 
       <Spacer h={4} />
 
@@ -183,8 +181,8 @@ export function CustomAnalytics(props: Stats) {
       />
       <Spacer h={8} />
 
-      <Title text="Retention" />
-      <p className="text-gray-500">
+      <Title children="Retention" />
+      <p className="text-ink-500">
         What fraction of active users are still active after the given time
         period?
       </p>
@@ -240,8 +238,8 @@ export function CustomAnalytics(props: Stats) {
       />
 
       <Spacer h={8} />
-      <Title text="New user retention" />
-      <p className="text-gray-500">
+      <Title children="New user retention" />
+      <p className="text-ink-500">
         What fraction of new users are still active after the given time period?
       </p>
       <Spacer h={4} />
@@ -287,7 +285,7 @@ export function CustomAnalytics(props: Stats) {
       />
       <Spacer h={8} />
 
-      <Title text="Daily activity" />
+      <Title children="Daily activity" />
       <Tabs
         className="mb-4"
         defaultIndex={0}
@@ -327,8 +325,8 @@ export function CustomAnalytics(props: Stats) {
 
       <Spacer h={8} />
 
-      <Title text="Activation rate" />
-      <p className="text-gray-500">
+      <Title children="Activation rate" />
+      <p className="text-ink-500">
         Out of all new users, how many placed at least one bet?
       </p>
       <Spacer h={4} />
@@ -363,7 +361,7 @@ export function CustomAnalytics(props: Stats) {
       />
       <Spacer h={8} />
 
-      <Title text="Ratio of Active Users" />
+      <Title children="Ratio of Active Users" />
       <Tabs
         className="mb-4"
         defaultIndex={1}
@@ -405,8 +403,8 @@ export function CustomAnalytics(props: Stats) {
       />
       <Spacer h={8} />
 
-      <Title text="Total mana bet" />
-      <p className="text-gray-500">
+      <Title children="Total mana bet" />
+      <p className="text-ink-500">
         Sum of bet amounts. (Divided by 100 to be more readable.)
       </p>
       <Tabs
@@ -441,7 +439,7 @@ export function CustomAnalytics(props: Stats) {
 export function WasabiCharts() {
   return (
     <>
-      <p className="text-gray-500">
+      <p className="text-ink-500">
         Courtesy of <Linkify text="@wasabipesto" />; originally found{' '}
         <SiteLink
           className="font-bold"
@@ -450,6 +448,11 @@ export function WasabiCharts() {
           here.
         </SiteLink>
       </p>
+      <InfoBox
+        text="This page is out of date, as of 2023-01-01"
+        title=""
+        className="bg-ink-100 mt-2"
+      />
       <Spacer h={4} />
       <iframe
         className="w-full border-0"

@@ -4,10 +4,11 @@ import {
   PseudoNumericContract,
 } from 'common/contract'
 import { User } from 'common/user'
+import { getContractBetMetrics } from 'common/calculate'
 import { useState } from 'react'
 import { Col } from '../layout/col'
 import { Row } from '../layout/row'
-import { formatWithCommas } from 'common/util/format'
+import { formatMoney, formatWithCommas } from 'common/util/format'
 import { OutcomeLabel } from '../outcome-label'
 import { useUserContractBets } from 'web/hooks/use-user-bets'
 import { useSaveBinaryShares } from '../../hooks/use-save-binary-shares'
@@ -17,13 +18,15 @@ import { Bet } from 'common/bet'
 import { Modal } from '../layout/modal'
 import { Title } from '../widgets/title'
 import { SellPanel } from './sell-panel'
+import { TweetButton, getPositionTweet } from '../buttons/tweet-button'
 
 export function SellRow(props: {
   contract: BinaryContract | PseudoNumericContract
   user: User | null | undefined
   className?: string
+  showTweet?: boolean
 }) {
-  const { className, contract, user } = props
+  const { className, contract, user, showTweet } = props
 
   const userBets = useUserContractBets(user?.id, contract.id)
   const [showSellModal, setShowSellModal] = useState(false)
@@ -34,19 +37,18 @@ export function SellRow(props: {
   if (sharesOutcome && user && mechanism === 'cpmm-1') {
     return (
       <Col className={className}>
-        <Row className="items-center justify-between gap-2 ">
+        <Row className="items-center justify-between gap-4">
           <div>
-            You have {formatWithCommas(shares)}{' '}
+            You'll get {formatMoney(shares)} on{' '}
             <OutcomeLabel
               outcome={sharesOutcome}
               contract={contract}
               truncate={'short'}
             />{' '}
-            shares
           </div>
 
           <Button
-            className="my-auto"
+            className="!py-1"
             size="xs"
             color="gray-outline"
             onClick={() => setShowSellModal(true)}
@@ -63,12 +65,23 @@ export function SellRow(props: {
               setOpen={setShowSellModal}
             />
           )}
+
+          {showTweet && userBets && (
+            <TweetButton
+              tweetText={getPositionTweet(
+                (sharesOutcome === 'NO' ? -1 : 1) * shares,
+                getContractBetMetrics(contract, userBets).invested,
+                contract,
+                user.username
+              )}
+            />
+          )}
         </Row>
       </Col>
     )
   }
 
-  return <div />
+  return null
 }
 
 function SellSharesModal(props: {
@@ -92,17 +105,18 @@ function SellSharesModal(props: {
 
   return (
     <Modal open={true} setOpen={setOpen}>
-      <Col className={clsx('rounded-md bg-white px-8 py-6', className)}>
-        <Title className="!mt-0" text={'Sell shares'} />
+      <Col className={clsx('bg-canvas-0 rounded-md px-8 py-6', className)}>
+        <Title>Sell position</Title>
 
         <div className="mb-6">
-          You have {formatWithCommas(Math.floor(shares))}{' '}
+          You have {formatWithCommas(shares)} shares worth {formatMoney(shares)}{' '}
+          if this market resolves{' '}
           <OutcomeLabel
             outcome={sharesOutcome}
             contract={contract}
             truncate={'short'}
-          />{' '}
-          shares
+          />
+          .
         </div>
 
         <SellPanel

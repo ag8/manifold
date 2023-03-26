@@ -11,7 +11,7 @@ import { FilterSelectUsers } from 'web/components/filter-select-users'
 import { useMemberIds } from 'web/hooks/use-group'
 import { Input } from '../widgets/input'
 import { Button } from '../buttons/button'
-import { SearchUserInfo } from 'web/lib/supabase/users'
+import { UserSearchResult } from 'web/lib/supabase/users'
 
 export function EditGroupButton(props: { group: Group; className?: string }) {
   const { group, className } = props
@@ -20,7 +20,7 @@ export function EditGroupButton(props: { group: Group; className?: string }) {
   const [name, setName] = useState(group.name)
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [addMemberUsers, setAddMemberUsers] = useState<SearchUserInfo[]>([])
+  const [addMemberUsers, setAddMemberUsers] = useState<UserSearchResult[]>([])
   const memberIds = useMemberIds(group.id) ?? []
   function updateOpen(newOpen: boolean) {
     setAddMemberUsers([])
@@ -52,7 +52,7 @@ export function EditGroupButton(props: { group: Group; className?: string }) {
         <PencilIcon className="inline h-4 w-4" /> Edit
       </Button>
       <Modal open={open} setOpen={updateOpen}>
-        <div className="h-full rounded-md bg-white p-8">
+        <div className="bg-canvas-0 h-full rounded-md p-8">
           <div className="flex w-full flex-col">
             <label className="px-1 py-2">
               <span className="mb-1">Group name</span>

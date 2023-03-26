@@ -5,7 +5,7 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { OmniSearch } from './search'
+import { OmniSearch } from './omni-search'
 import { Modal } from '../layout/modal'
 
 // context for opening modal
@@ -20,6 +20,7 @@ const SearchCtx = createContext<SearchContextInterface | null>(null)
 export const SearchProvider = (props: { children: ReactNode }) => {
   const { children } = props
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     window.addEventListener('keydown', (e) => {
@@ -32,8 +33,19 @@ export const SearchProvider = (props: { children: ReactNode }) => {
 
   return (
     <SearchCtx.Provider value={{ open, setOpen }}>
-      <Modal open={open} setOpen={setOpen} size="lg" className="h-[70vh]">
-        <OmniSearch />
+      <Modal
+        open={open}
+        setOpen={setOpen}
+        size="lg"
+        className="sm:mt-[15vh]"
+        position="top"
+      >
+        <OmniSearch
+          className="max-h-[70vh] overflow-hidden rounded-2xl"
+          query={query}
+          setQuery={setQuery}
+          onSelect={() => setQuery('')}
+        />
       </Modal>
       {children}
     </SearchCtx.Provider>
@@ -43,7 +55,3 @@ export const SearchProvider = (props: { children: ReactNode }) => {
 export function useSearchContext() {
   return useContext(SearchCtx)
 }
-
-// keyboard controls
-
-// search button

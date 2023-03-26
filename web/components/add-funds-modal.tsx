@@ -1,5 +1,5 @@
 import { formatMoney, manaToUSD } from 'common/util/format'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useUser } from 'web/hooks/use-user'
 import { checkoutURL } from 'web/lib/service/stripe'
 import { Button } from './buttons/button'
@@ -8,19 +8,18 @@ import { getNativePlatform } from 'web/lib/native/is-native'
 import { Tabs } from './layout/tabs'
 import { IOS_PRICES, WEB_PRICES } from 'web/pages/add-funds'
 import { postMessageToNative } from 'web/components/native-message-listener'
-import { SINGULAR_BET } from 'common/user'
 import {
   BETTING_STREAK_BONUS_MAX,
   REFERRAL_AMOUNT,
   UNIQUE_BETTOR_BONUS_AMOUNT,
 } from 'common/economy'
 import Link from 'next/link'
-import { Card } from 'web/components/widgets/card'
 import { validateIapReceipt } from 'web/lib/firebase/api'
 import { useNativeMessages } from 'web/hooks/use-native-messages'
 import { Row } from 'web/components/layout/row'
-import clsx from 'clsx'
 import { ENV_CONFIG } from 'common/envs/constants'
+import { ChoicesToggleGroup } from './widgets/choices-toggle-group'
+import { useRouter } from 'next/router'
 
 export function AddFundsModal(props: {
   open: boolean
@@ -29,7 +28,11 @@ export function AddFundsModal(props: {
   const { open, setOpen } = props
 
   return (
-    <Modal open={open} setOpen={setOpen} className="rounded-md bg-white p-8">
+    <Modal
+      open={open}
+      setOpen={setOpen}
+      className="bg-canvas-0 text-ink-1000 rounded-md p-8"
+    >
       <Tabs
         currentPageForAnalytics="buy modal"
         tabs={[
@@ -41,9 +44,7 @@ export function AddFundsModal(props: {
             title: "I'm Broke",
             content: (
               <>
-                <div className="mt-6 mb-4">
-                  Here are some other ways to get mana:
-                </div>
+                <div className="mt-6 mb-4">Other ways to get mana:</div>
                 <OtherWaysToGetMana />
               </>
             ),
@@ -54,7 +55,7 @@ export function AddFundsModal(props: {
   )
 }
 
-function BuyManaTab(props: { onClose: () => void }) {
+export function BuyManaTab(props: { onClose: () => void }) {
   const { onClose } = props
   const user = useUser()
   const { isNative, platform } = getNativePlatform()
@@ -82,6 +83,12 @@ function BuyManaTab(props: { onClose: () => void }) {
   }
   useNativeMessages(['iapReceipt', 'iapError'], handleIapReceipt)
 
+  const router = useRouter()
+  console.log('route', router.route)
+
+  const [url, setUrl] = useState('https://manifold.markets')
+  useEffect(() => setUrl(window.location.href), [])
+
   return (
     <>
       <div className="mt-6 mb-4">
@@ -89,16 +96,15 @@ function BuyManaTab(props: { onClose: () => void }) {
         <div className="italic">Not redeemable for cash.</div>
       </div>
 
-      <div className="mb-2 text-sm text-gray-500">Amount</div>
+      <div className="text-ink-500 mb-2 text-sm">Amount</div>
       <FundsSelector
         fundAmounts={prices}
         selected={amountSelected}
         onSelect={setAmountSelected}
-        btnClassName={'max-w-[7rem]'}
       />
 
       <div className="mt-6">
-        <div className="mb-1 text-sm text-gray-500">Price USD</div>
+        <div className="text-ink-500 mb-1 text-sm">Price USD</div>
         <div className="text-xl">{manaToUSD(amountSelected)}</div>
       </div>
 
@@ -121,11 +127,7 @@ function BuyManaTab(props: { onClose: () => void }) {
           </Button>
         ) : (
           <form
-            action={checkoutURL(
-              user?.id || '',
-              amountSelected,
-              window.location.href
-            )}
+            action={checkoutURL(user?.id || '', amountSelected, url)}
             method="POST"
           >
             <Button type="submit" color="gradient">
@@ -139,43 +141,32 @@ function BuyManaTab(props: { onClose: () => void }) {
   )
 }
 
-export const OtherWaysToGetMana = (props: { includeBuyNote?: boolean }) => {
-  const { includeBuyNote } = props
+export const OtherWaysToGetMana = () => {
   return (
-    <ul className="space-y-2 text-sm">
+    <ul className="border-ink-100 border-t">
+      <Item url="/ad">
+        👀 Read ads for
+        <span className={'mx-1 font-bold'}>{formatMoney(5)}</span>per ad
+      </Item>
       <Item>
-        Place your first {SINGULAR_BET} of the day to get your streak bonus (up
-        to
+        🔥 Streak bonus (up to
         <span className={'mx-1 font-bold'}>
           {formatMoney(BETTING_STREAK_BONUS_MAX)}
         </span>
-        per day!)
+        per day)
       </Item>
       <Item url="/referrals">
-        Refer a friend and get
+        👋 Refer a friend for
         <span className={'mx-1 font-bold'}>{formatMoney(REFERRAL_AMOUNT)}</span>
-        per signup after they place their first trade
+        after their first trade
       </Item>
       <Item url="/create">
-        Make a market and get
+        📈 Make a market for
         <span className={'mx-1 font-bold'}>
           {formatMoney(UNIQUE_BETTOR_BONUS_AMOUNT)}
         </span>
         per unique trader
       </Item>
-      <Item url="https://discord.gg/3Zuth9792G">
-        Come by our discord and ask nicely. We pay new users for sharing their
-        experiences!
-      </Item>
-      <Item url="https://github.com/manifoldmarkets/manifold">
-        Contribute to our codebase, even something simple, and we'll pay you a
-        bounty
-      </Item>
-      {includeBuyNote && (
-        <Item>
-          Visit our website in your browser to buy mana with a credit card.
-        </Item>
-      )}
     </ul>
   )
 }
@@ -183,13 +174,13 @@ export const OtherWaysToGetMana = (props: { includeBuyNote?: boolean }) => {
 const Item = (props: { children: React.ReactNode; url?: string }) => {
   const { children, url } = props
   return (
-    <li>
+    <li className="border-ink-100 border-b">
       {url ? (
         <Link href={url}>
-          <Card className="p-2">{children}</Card>
+          <div className="hover:bg-primary-100 py-3">{children}</div>
         </Link>
       ) : (
-        <Card className="pointer-events-none cursor-auto p-2">{children}</Card>
+        <div className="py-3">{children}</div>
       )}
     </li>
   )
@@ -199,24 +190,15 @@ export function FundsSelector(props: {
   fundAmounts: { [key: string]: number }
   selected: number
   onSelect: (selected: number) => void
-  className?: string
-  btnClassName?: string
 }) {
-  const { selected, onSelect, className, fundAmounts } = props
-  const btnClassName = clsx('!px-2 whitespace-nowrap', props.btnClassName)
+  const { selected, onSelect, fundAmounts } = props
 
   return (
-    <Row className={clsx('flex-wrap gap-3', className)}>
-      {Object.entries(fundAmounts).map(([key, amount]) => (
-        <Button
-          key={amount}
-          color={selected === amount ? 'indigo' : 'gray'}
-          onClick={() => onSelect(amount as any)}
-          className={btnClassName}
-        >
-          {key}
-        </Button>
-      ))}
-    </Row>
+    <ChoicesToggleGroup
+      className="self-start"
+      currentChoice={selected}
+      choicesMap={fundAmounts}
+      setChoice={onSelect as any}
+    />
   )
 }

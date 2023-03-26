@@ -3,7 +3,6 @@ import { scaleTime, scaleLinear } from 'd3-scale'
 import { curveStepAfter } from 'd3-shape'
 import { min, max } from 'lodash'
 import dayjs from 'dayjs'
-import { PortfolioMetrics } from 'common/user'
 import { Col } from '../layout/col'
 import { TooltipProps } from 'web/components/charts/helpers'
 import {
@@ -11,12 +10,13 @@ import {
   HistoryPoint,
   viewScale,
 } from 'web/components/charts/generic-charts'
+import { PortfolioMetrics } from 'common/portfolio-metrics'
 
-const MARGIN = { top: 20, right: 70, bottom: 20, left: 10 }
+const MARGIN = { top: 12, right: 48, bottom: 20, left: 12 }
 const MARGIN_X = MARGIN.left + MARGIN.right
 const MARGIN_Y = MARGIN.top + MARGIN.bottom
 
-export type GraphMode = 'profit' | 'value'
+export type GraphMode = 'profit' | 'value' | 'balance'
 
 export const PortfolioTooltip = (props: TooltipProps<Date, HistoryPoint>) => {
   const { x, xScale } = props
@@ -24,45 +24,33 @@ export const PortfolioTooltip = (props: TooltipProps<Date, HistoryPoint>) => {
   return (
     <Col className="text-xs font-semibold sm:text-sm">
       <div>{d.format('MMM/D/YY')}</div>
-      <div className="text-2xs font-normal text-gray-600 sm:text-xs">
+      <div className="text-2xs text-ink-600 font-normal sm:text-xs">
         {d.format('h:mm A')}
       </div>
     </Col>
   )
 }
 
-const getY = (mode: GraphMode, p: PortfolioMetrics) =>
-  p.balance + p.investmentValue - (mode === 'profit' ? p.totalDeposits : 0)
-
-export function getPoints(mode: GraphMode, history: PortfolioMetrics[]) {
-  return history.map((p) => ({
-    x: p.timestamp,
-    y: getY(mode, p),
-    obj: p,
-  }))
-}
-
 export const PortfolioGraph = (props: {
-  mode: 'profit' | 'value'
-  history: PortfolioMetrics[]
+  mode: 'profit' | 'value' | 'balance'
+  points: HistoryPoint<Partial<PortfolioMetrics>>[]
   width: number
   height: number
   viewScaleProps: viewScale
-  onMouseOver?: (p: HistoryPoint<PortfolioMetrics> | undefined) => void
+  onMouseOver?: (p: HistoryPoint<Partial<PortfolioMetrics>> | undefined) => void
 }) => {
-  const { mode, history, onMouseOver, width, height, viewScaleProps } = props
-  const { data, minDate, maxDate, minValue, maxValue } = useMemo(() => {
-    const data = getPoints(mode, history)
+  const { mode, points, onMouseOver, width, height, viewScaleProps } = props
+  const { minDate, maxDate, minValue, maxValue } = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const minDate = min(data.map((d) => d.x))!
+    const minDate = min(points.map((d) => d.x))!
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const maxDate = max(data.map((d) => d.x))!
+    const maxDate = max(points.map((d) => d.x))!
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const minValue = min(data.map((d) => d.y))!
+    const minValue = min(points.map((d) => d.y))!
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const maxValue = max(data.map((d) => d.y))!
-    return { data, minDate, maxDate, minValue, maxValue }
-  }, [mode, history])
+    const maxValue = max(points.map((d) => d.y))!
+    return { minDate, maxDate, minValue, maxValue }
+  }, [points])
 
   return (
     <ControllableSingleValueHistoryChart
@@ -73,14 +61,14 @@ export const PortfolioGraph = (props: {
       yScale={scaleLinear([minValue, maxValue], [height - MARGIN_Y, 0])}
       viewScaleProps={viewScaleProps}
       yKind="Ṁ"
-      data={data}
+      data={points}
       curve={curveStepAfter}
       Tooltip={PortfolioTooltip}
       onMouseOver={onMouseOver}
       color={
-        mode === 'value'
-          ? '#4f46e5'
-          : (p: HistoryPoint) => (p.y >= 0 ? '#14b8a6' : '#FFA799')
+        mode === 'profit'
+          ? (p: HistoryPoint) => (p.y >= 0 ? '#14b8a6' : '#FFA799')
+          : '#4f46e5'
       }
     />
   )

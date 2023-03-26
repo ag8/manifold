@@ -1,11 +1,11 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import { SearchOptions } from '@algolia/client-search'
 import { useRouter } from 'next/router'
 import { Contract } from 'common/contract'
 import { ContractsGrid } from './contract/contracts-grid'
 import { ShowTime } from './contract/contract-details'
-import { useEffect, useRef, useMemo, ReactNode } from 'react'
+import { useEffect, useRef, useMemo, createContext, useContext } from 'react'
 import { IS_PRIVATE_MANIFOLD } from 'common/envs/constants'
+import { useEvent } from 'web/hooks/use-event'
 import {
   historyStore,
   inMemoryStore,
@@ -25,19 +25,24 @@ import {
 } from 'web/lib/service/algolia'
 import { Input } from './widgets/input'
 import { Select } from './widgets/select'
-import { SimpleLinkButton } from './buttons/simple-link-button'
 import { useSafeLayoutEffect } from 'web/hooks/use-safe-layout-effect'
+import { groupRoleType } from './groups/group-member-modal'
+import { Group } from 'common/group'
+import { ViewGridIcon, ViewListIcon } from '@heroicons/react/outline'
+import { ContractsList } from './contract/contracts-list'
+import { SiteLink } from './widgets/site-link'
 
 export const SORTS = [
+  { label: 'Relevance', value: 'relevance' },
   { label: 'New', value: 'newest' },
   { label: 'Trending', value: 'score' },
   { label: 'Daily change', value: 'daily-score' },
   { label: '24h volume', value: '24-hour-vol' },
   { label: 'Total traders', value: 'most-popular' },
-  { label: 'Liquidity', value: 'liquidity' },
-  { label: 'Last updated', value: 'last-updated' },
+  { label: 'High stakes', value: 'liquidity' },
+  { label: 'Last activity', value: 'last-updated' },
   { label: 'Closing soon', value: 'close-date' },
-  { label: 'Resolve date', value: 'resolve-date' },
+  { label: 'Just resolved', value: 'resolve-date' },
   { label: 'Highest %', value: 'prob-descending' },
   { label: 'Lowest %', value: 'prob-ascending' },
 ] as const
@@ -54,7 +59,7 @@ type SearchParameters = {
   facetFilters: SearchOptions['facetFilters']
 }
 
-type AdditionalFilter = {
+export type AdditionalFilter = {
   creatorId?: string
   tag?: string
   excludeContractIds?: string[]
@@ -62,12 +67,16 @@ type AdditionalFilter = {
   facetFilters?: string[]
   nonQueryFacetFilters?: string[]
 }
+const AsListContext = createContext({
+  asList: false,
+  setAsList: (_asList: boolean) => {},
+})
 
 export function ContractSearch(props: {
   defaultSort?: Sort
   defaultFilter?: filter
   additionalFilter?: AdditionalFilter
-  highlightCards?: string[]
+  highlightContractIds?: string[]
   onContractClick?: (contract: Contract) => void
   hideOrderSelector?: boolean
   cardUIOptions?: {
@@ -77,17 +86,16 @@ export function ContractSearch(props: {
   }
   headerClassName?: string
   persistPrefix?: string
-  useQueryUrlParam?: boolean
   isWholePage?: boolean
   includeProbSorts?: boolean
-  noControls?: boolean
-  maxResults?: number
-  renderContracts?: (
-    contracts: Contract[] | undefined,
-    loadMore: () => void
-  ) => ReactNode
   autoFocus?: boolean
   profile?: boolean | undefined
+  fromGroupProps?: {
+    group: Group
+    userRole: groupRoleType | null
+  }
+  listViewDisabled?: boolean
+  contractSearchControlsClassName?: string
 }) {
   const {
     defaultSort,
@@ -96,17 +104,15 @@ export function ContractSearch(props: {
     onContractClick,
     hideOrderSelector,
     cardUIOptions,
-    highlightCards,
+    highlightContractIds,
     headerClassName,
     persistPrefix,
-    useQueryUrlParam,
     includeProbSorts,
     isWholePage,
-    noControls,
-    maxResults,
-    renderContracts,
     autoFocus,
     profile,
+    fromGroupProps,
+    listViewDisabled,
   } = props
 
   const [state, setState] = usePersistentState(
@@ -123,6 +129,10 @@ export function ContractSearch(props: {
   const searchParams = useRef<SearchParameters | null>(null)
   const searchParamsStore = inMemoryStore<SearchParameters>()
   const requestId = useRef(0)
+  const [asList, setAsList] = usePersistentState(!listViewDisabled, {
+    key: 'contract-search-as-list',
+    store: inMemoryStore(),
+  })
 
   useSafeLayoutEffect(() => {
     if (persistPrefix) {
@@ -138,7 +148,7 @@ export function ContractSearch(props: {
     [searchIndexName]
   )
 
-  const performQuery = async (freshQuery?: boolean) => {
+  const performQuery = useEvent(async (freshQuery?: boolean) => {
     if (searchParams.current == null) {
       return
     }
@@ -146,15 +156,14 @@ export function ContractSearch(props: {
     const id = ++requestId.current
     const requestedPage = freshQuery ? 0 : state.pages.length
     if (freshQuery || requestedPage < state.numPages) {
-      const index = query
-        ? searchIndex
-        : searchClient.initIndex(getIndexName(sort))
-      const numericFilters = query
-        ? []
-        : [
-            openClosedFilter === 'open' ? `closeTime > ${Date.now()}` : '',
-            openClosedFilter === 'closed' ? `closeTime <= ${Date.now()}` : '',
-          ].filter((f) => f)
+      const index =
+        sort === 'relevance'
+          ? searchIndex
+          : searchClient.initIndex(getIndexName(sort))
+      const numericFilters = [
+        openClosedFilter === 'open' ? `closeTime > ${Date.now()}` : '',
+        openClosedFilter === 'closed' ? `closeTime <= ${Date.now()}` : '',
+      ].filter((f) => f)
       const results = await index.search(query, {
         facetFilters,
         numericFilters,
@@ -172,7 +181,7 @@ export function ContractSearch(props: {
         if (freshQuery && isWholePage) window.scrollTo(0, 0)
       }
     }
-  }
+  })
 
   // Always do first query when loading search page, unless going back in history.
   const [firstQuery, setFirstQuery] = usePersistentState(true, {
@@ -196,44 +205,59 @@ export function ContractSearch(props: {
   const contracts = state.pages
     .flat()
     .filter((c) => !additionalFilter?.excludeContractIds?.includes(c.id))
-  const renderedContracts =
-    state.pages.length === 0 ? undefined : contracts.slice(0, maxResults)
+  const renderedContracts = state.pages.length === 0 ? undefined : contracts
 
   if (IS_PRIVATE_MANIFOLD || process.env.NEXT_PUBLIC_FIREBASE_EMULATE) {
     return <ContractSearchFirestore additionalFilter={additionalFilter} />
   }
 
   return (
-    <Col>
-      <ContractSearchControls
-        className={headerClassName}
-        defaultSort={defaultSort}
-        defaultFilter={defaultFilter}
-        additionalFilter={additionalFilter}
-        persistPrefix={persistPrefix}
-        hideOrderSelector={hideOrderSelector}
-        useQueryUrlParam={useQueryUrlParam}
-        includeProbSorts={includeProbSorts}
-        onSearchParametersChanged={onSearchParametersChanged}
-        noControls={noControls}
-        autoFocus={autoFocus}
-        isWholePage={isWholePage}
-      />
-      {renderContracts ? (
-        renderContracts(renderedContracts, performQuery)
-      ) : renderedContracts && renderedContracts.length === 0 && profile ? (
-        <p className="mx-2 text-gray-500">No markets found</p>
-      ) : (
-        <ContractsGrid
-          contracts={renderedContracts}
-          loadMore={noControls ? undefined : performQuery}
-          showTime={state.showTime ?? undefined}
-          onContractClick={onContractClick}
-          highlightCards={highlightCards}
-          cardUIOptions={cardUIOptions}
+    <AsListContext.Provider value={{ asList, setAsList }}>
+      <Col>
+        <ContractSearchControls
+          className={headerClassName}
+          defaultSort={defaultSort}
+          defaultFilter={defaultFilter}
+          additionalFilter={additionalFilter}
+          persistPrefix={persistPrefix}
+          hideOrderSelector={hideOrderSelector}
+          useQueryUrlParam={isWholePage}
+          includeProbSorts={includeProbSorts}
+          onSearchParametersChanged={onSearchParametersChanged}
+          autoFocus={autoFocus}
+          listViewDisabled={listViewDisabled}
         />
-      )}
-    </Col>
+        {renderedContracts && renderedContracts.length === 0 ? (
+          profile ? (
+            <p className="text-ink-500 mx-2">No markets found</p>
+          ) : (
+            <p className="text-ink-500 mx-2">
+              No markets found. Why not{' '}
+              <SiteLink href="/create" className="text-ink-700 font-bold">
+                create one?
+              </SiteLink>
+            </p>
+          )
+        ) : asList ? (
+          <ContractsList
+            contracts={renderedContracts}
+            loadMore={performQuery}
+            onContractClick={onContractClick}
+            highlightContractIds={highlightContractIds}
+          />
+        ) : (
+          <ContractsGrid
+            contracts={renderedContracts}
+            showTime={state.showTime ?? undefined}
+            onContractClick={onContractClick}
+            highlightContractIds={highlightContractIds}
+            cardUIOptions={cardUIOptions}
+            loadMore={performQuery}
+            fromGroupProps={fromGroupProps}
+          />
+        )}
+      </Col>
+    </AsListContext.Provider>
   )
 }
 
@@ -247,23 +271,21 @@ function ContractSearchControls(props: {
   includeProbSorts?: boolean
   onSearchParametersChanged: (params: SearchParameters) => void
   useQueryUrlParam?: boolean
-  noControls?: boolean
   autoFocus?: boolean
-  isWholePage?: boolean
+  listViewDisabled?: boolean
 }) {
   const {
     className,
-    defaultSort,
-    defaultFilter,
+    defaultSort = 'relevance',
+    defaultFilter = 'open',
     additionalFilter,
     persistPrefix,
     hideOrderSelector,
     onSearchParametersChanged,
     useQueryUrlParam,
-    noControls,
     autoFocus,
     includeProbSorts,
-    isWholePage,
+    listViewDisabled,
   } = props
 
   const router = useRouter()
@@ -278,10 +300,10 @@ function ContractSearchControls(props: {
   )
 
   const sortKey = `${persistPrefix}-search-sort`
-  const savedSort = safeLocalStorage()?.getItem(sortKey)
+  const savedSort = safeLocalStorage?.getItem(sortKey)
 
   const [sort, setSort] = usePersistentState(
-    savedSort ?? defaultSort ?? 'score',
+    savedSort ?? defaultSort,
     !useQueryUrlParam
       ? undefined
       : {
@@ -289,8 +311,8 @@ function ContractSearchControls(props: {
           store: urlParamStore(router),
         }
   )
-  const [filter, setFilter] = usePersistentState(
-    defaultFilter ?? 'open',
+  const [filterState, setFilter] = usePersistentState(
+    defaultFilter,
     !useQueryUrlParam
       ? undefined
       : {
@@ -299,9 +321,16 @@ function ContractSearchControls(props: {
         }
   )
 
+  const filter =
+    sort === 'close-date'
+      ? 'open'
+      : sort === 'resolve-date'
+      ? 'resolved'
+      : filterState
+
   useEffect(() => {
     if (persistPrefix && sort) {
-      safeLocalStorage()?.setItem(sortKey, sort as string)
+      safeLocalStorage?.setItem(sortKey, sort as string)
     }
   }, [persistPrefix, query, sort, sortKey])
 
@@ -315,19 +344,17 @@ function ContractSearchControls(props: {
       : '',
     ...(additionalFilter?.facetFilters ?? []),
   ]
-  const facetFilters = query
-    ? additionalFilters
-    : [
-        ...additionalFilters,
-        ...(additionalFilter?.nonQueryFacetFilters ?? []),
-        additionalFilter?.creatorId || additionalFilter?.groupSlug
-          ? ''
-          : 'visibility:public',
+  const facetFilters = [
+    ...additionalFilters,
+    ...(!query ? additionalFilter?.nonQueryFacetFilters ?? [] : []),
+    additionalFilter?.creatorId || additionalFilter?.groupSlug
+      ? ''
+      : 'visibility:public',
 
-        filter === 'open' ? 'isResolved:false' : '',
-        filter === 'closed' ? 'isResolved:false' : '',
-        filter === 'resolved' ? 'isResolved:true' : '',
-      ].filter((f) => f)
+    filter === 'open' ? 'isResolved:false' : '',
+    filter === 'closed' ? 'isResolved:false' : '',
+    filter === 'resolved' ? 'isResolved:true' : '',
+  ].filter((f) => f)
 
   const openClosedFilter =
     filter === 'open' ? 'open' : filter === 'closed' ? 'closed' : undefined
@@ -337,7 +364,7 @@ function ContractSearchControls(props: {
   }
 
   const selectFilter = (newFilter: filter) => {
-    if (newFilter === filter) return
+    if (newFilter === filterState) return
     setFilter(newFilter)
     track('select search filter', { filter: newFilter })
   }
@@ -357,43 +384,34 @@ function ContractSearchControls(props: {
     })
   }, [query, sort, openClosedFilter, JSON.stringify(facetFilters)])
 
-  if (noControls) {
-    return <></>
-  }
-
   return (
-    <Col className={clsx('top-0 z-20 mb-1 gap-3 bg-gray-50 pb-2', className)}>
-      <div className="mt-px flex flex-col items-stretch gap-3 sm:flex-row sm:gap-2">
-        <Input
-          type="text"
-          inputMode="search"
-          value={query}
-          onChange={(e) => updateQuery(e.target.value)}
-          onBlur={trackCallback('search', { query: query })}
-          placeholder="Search"
-          className="w-full"
-          autoFocus={autoFocus}
-        />
-        {query ? (
-          isWholePage && (
-            <SimpleLinkButton
-              getUrl={() => window.location.href}
-              tooltip="Copy link to search results"
-            />
-          )
-        ) : (
-          <SearchFilters
-            filter={filter}
-            selectFilter={selectFilter}
-            hideOrderSelector={hideOrderSelector}
-            selectSort={selectSort}
-            sort={sort}
-            className={'flex flex-row gap-2'}
-            includeProbSorts={includeProbSorts}
-          />
-        )}
-      </div>
-    </Col>
+    <div
+      className={clsx(
+        'sticky top-0 z-30 mb-1 flex flex-col items-stretch gap-3 pb-2 pt-px sm:flex-row sm:gap-2',
+        className
+      )}
+    >
+      <Input
+        type="text"
+        inputMode="search"
+        value={query}
+        onChange={(e) => updateQuery(e.target.value)}
+        onBlur={trackCallback('search', { query: query })}
+        placeholder="Filter markets"
+        className="w-full"
+        autoFocus={autoFocus}
+      />
+      <SearchFilters
+        filter={filter}
+        selectFilter={selectFilter}
+        hideOrderSelector={hideOrderSelector}
+        selectSort={selectSort}
+        sort={sort}
+        className={'flex flex-row gap-2'}
+        includeProbSorts={includeProbSorts}
+        listViewDisabled={listViewDisabled}
+      />
+    </div>
   )
 }
 
@@ -405,7 +423,10 @@ function SearchFilters(props: {
   sort: string
   className?: string
   includeProbSorts?: boolean
+  listViewDisabled?: boolean
 }) {
+  const { asList, setAsList } = useContext(AsListContext)
+
   const {
     filter,
     selectFilter,
@@ -414,24 +435,29 @@ function SearchFilters(props: {
     sort,
     className,
     includeProbSorts,
+    listViewDisabled,
   } = props
 
   const sorts = includeProbSorts
     ? SORTS
     : SORTS.filter((sort) => !PROB_SORTS.includes(sort.value))
 
+  const hideFilter = sort === 'resolve-date' || sort === 'close-date'
+
   return (
     <div className={className}>
-      <Select
-        value={filter}
-        onChange={(e) => selectFilter(e.target.value as filter)}
-        className="!h-full grow py-1"
-      >
-        <option value="open">Open</option>
-        <option value="closed">Closed</option>
-        <option value="resolved">Resolved</option>
-        <option value="all">All</option>
-      </Select>
+      {!hideFilter && (
+        <Select
+          value={filter}
+          onChange={(e) => selectFilter(e.target.value as filter)}
+          className="!h-full grow py-1"
+        >
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+          <option value="resolved">Resolved</option>
+          <option value="all">All</option>
+        </Select>
+      )}
       {!hideOrderSelector && (
         <Select
           value={sort}
@@ -444,6 +470,19 @@ function SearchFilters(props: {
             </option>
           ))}
         </Select>
+      )}
+      {!listViewDisabled && (
+        <button
+          type="button"
+          onClick={() => setAsList(!asList)}
+          className="hover:bg-canvas-50 border-ink-300 text-ink-500 bg-canvas-0 focus:border-primary-500 focus:ring-primary-500 relative inline-flex h-full items-center rounded-md border px-2 py-1 text-sm font-medium shadow-sm focus:z-10 focus:outline-none focus:ring-1 sm:py-2"
+        >
+          {asList ? (
+            <ViewGridIcon className="h-5 w-5" aria-hidden="true" />
+          ) : (
+            <ViewListIcon className="h-5 w-5" aria-hidden="true" />
+          )}
+        </button>
       )}
     </div>
   )

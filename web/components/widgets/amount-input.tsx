@@ -21,6 +21,7 @@ export function AmountInput(props: {
   inputClassName?: string
   // Needed to focus the amount input
   inputRef?: React.MutableRefObject<any>
+  quickAddClassName?: string
 }) {
   const {
     amount,
@@ -31,6 +32,7 @@ export function AmountInput(props: {
     className,
     inputClassName,
     inputRef,
+    quickAddClassName,
   } = props
 
   const parse = (str: string) => parseInt(str.replace(/\D/g, ''))
@@ -45,36 +47,43 @@ export function AmountInput(props: {
     <>
       <Col className={clsx('relative', error && 'mb-3', className)}>
         <label className="font-sm md:font-lg relative">
-          <span className="absolute top-1/2 my-auto ml-2 -translate-y-1/2 text-gray-400">
+          <span className="text-ink-400 absolute top-1/2 my-auto ml-2 -translate-y-1/2">
             {label}
           </span>
-          <Input
-            className={clsx('pl-9 !text-lg', inputClassName)}
-            ref={inputRef}
-            type="text"
-            pattern="[0-9]*"
-            inputMode="numeric"
-            placeholder="0"
-            maxLength={6}
-            value={amount ?? ''}
-            error={!!error}
-            disabled={disabled}
-            onChange={(e) => onAmountChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowUp') {
-                onChange((amount ?? 0) + 5)
-              } else if (e.key === 'ArrowDown') {
-                onChange(Math.max(0, (amount ?? 0) - 5))
-              }
-            }}
-          />
-        </label>
-
-        {error && (
-          <div className="text-scarlet-500 absolute -bottom-5 whitespace-nowrap text-xs font-medium tracking-wide">
-            {error === 'Insufficient balance' ? <BuyMoreFunds /> : error}
+          <div className="flex">
+            <Input
+              className={clsx('pl-9 !text-lg', inputClassName)}
+              ref={inputRef}
+              type="text"
+              pattern="[0-9]*"
+              inputMode="numeric"
+              placeholder="0"
+              maxLength={6}
+              value={amount ?? ''}
+              error={!!error}
+              disabled={disabled}
+              onChange={(e) => onAmountChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowUp') {
+                  onChange((amount ?? 0) + 5)
+                } else if (e.key === 'ArrowDown') {
+                  onChange(Math.max(0, (amount ?? 0) - 5))
+                }
+              }}
+            />
+            {quickAddClassName && (
+              <button
+                className={clsx(
+                  'absolute right-px top-px bottom-px rounded-r-md px-2.5 transition-colors',
+                  quickAddClassName
+                )}
+                onClick={() => onChange((amount ?? 0) + 10)}
+              >
+                +10
+              </button>
+            )}
           </div>
-        )}
+        </label>
       </Col>
     </>
   )
@@ -87,28 +96,32 @@ export function BuyAmountInput(props: {
   setError: (error: string | undefined) => void
   minimumAmount?: number
   disabled?: boolean
-  showSlider?: boolean
-  hideInput?: boolean
+  showBalance?: boolean
   className?: string
   inputClassName?: string
   // Needed to focus the amount input
   inputRef?: React.MutableRefObject<any>
   binaryOutcome?: binaryOutcomes
+  sliderOptions?: {
+    show: boolean
+    wrap: boolean
+  }
 }) {
   const {
     amount,
     onChange,
     error,
     setError,
-    showSlider,
+    sliderOptions,
     disabled,
+    showBalance,
     className,
     inputClassName,
     minimumAmount,
     inputRef,
     binaryOutcome,
-    hideInput,
   } = props
+  const { show, wrap } = sliderOptions ?? {}
 
   const user = useUser()
 
@@ -136,23 +149,28 @@ export function BuyAmountInput(props: {
       <Col>
         <Row
           className={clsx(
-            'items-center gap-x-4 gap-y-1 xl:flex-wrap',
-            hideInput ? 'mb-4' : ''
+            'items-center justify-between gap-x-4 gap-y-1 sm:justify-start',
+            wrap ? 'flex-wrap' : ''
           )}
         >
-          {!hideInput && (
-            <AmountInput
-              amount={amount}
-              onChange={onAmountChange}
-              label={ENV_CONFIG.moneyMoniker}
-              error={error}
-              disabled={disabled}
-              className={className}
-              inputClassName={inputClassName}
-              inputRef={inputRef}
-            />
-          )}
-          {showSlider && (
+          <AmountInput
+            amount={amount}
+            onChange={onAmountChange}
+            label={ENV_CONFIG.moneyMoniker}
+            error={error}
+            disabled={disabled}
+            className={className}
+            inputClassName={clsx('pr-12', inputClassName)}
+            inputRef={inputRef}
+            quickAddClassName={
+              binaryOutcome === 'YES'
+                ? 'text-teal-500 hover:bg-teal-100'
+                : binaryOutcome === 'NO'
+                ? 'text-scarlet-300 hover:bg-scarlet-50'
+                : 'text-ink-500 hover:bg-ink-200'
+            }
+          />
+          {show && (
             <BetSlider
               amount={amount}
               onAmountChange={onAmountChange}
@@ -160,10 +178,17 @@ export function BuyAmountInput(props: {
             />
           )}
         </Row>
-        {hideInput && error && (
+        {error ? (
           <div className="text-scarlet-500 whitespace-nowrap text-xs font-medium tracking-wide">
             {error === 'Insufficient balance' ? <BuyMoreFunds /> : error}
           </div>
+        ) : (
+          showBalance &&
+          user && (
+            <div className="text-ink-500 whitespace-nowrap text-xs font-medium tracking-wide">
+              Balance: {formatMoney(user.balance)}
+            </div>
+          )
         )}
       </Col>
     </>
@@ -176,7 +201,7 @@ const BuyMoreFunds = () => {
     <>
       Not enough funds.
       <button
-        className="ml-1 text-indigo-500 hover:underline hover:decoration-indigo-400"
+        className="text-primary-500 hover:decoration-primary-400 ml-1 hover:underline"
         onClick={() => setAddFundsModalOpen(true)}
       >
         Buy more?

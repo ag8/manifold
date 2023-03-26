@@ -1,5 +1,5 @@
 import { beginsWith, searchInAny } from 'common/util/parse'
-import { orderBy } from 'lodash'
+import { keyBy, orderBy } from 'lodash'
 
 export interface PageData {
   label: string
@@ -16,12 +16,20 @@ const pages: PageData[] = [
     slug: '/create',
     keywords: ['add', 'make', 'ask'],
   },
+  {
+    label: 'Groups',
+    slug: '/groups',
+    keywords: ['create group'], // TODO: this flow is bad
+  },
   { label: 'Get mana', slug: '/add-funds', keywords: ['buy', 'subscribe'] },
   { label: 'Charity', slug: '/charity', keywords: ['donate', 'for good'] },
   { label: 'Referrals', slug: '/referrals' },
   { label: 'Live Feed', slug: '/live' },
+  { label: 'About & Help', slug: 'https://help.manifold.markets' },
+  { label: 'Ads', slug: '/ad', keywords: ['advertisement'] },
 
-  { label: 'New', slug: '/search?s=newest&f=open' },
+  { label: 'Markets', slug: '/markets' },
+  { label: 'Newest', slug: '/search?s=newest&f=open' },
   { label: 'Trending', slug: '/search?s=score&f=open' },
   { label: 'Daily Changed', slug: '/search?s=daily-score&f=open' },
   { label: '24h Volume', slug: '/search?s=24-hour-vol&f=open' },
@@ -30,7 +38,12 @@ const pages: PageData[] = [
     slug: '/search?s=most-popular&f=open',
     keywords: ['most popular'],
   },
-  { label: 'Closing soon', slug: '/search?s=close-date&f=open' },
+  { label: 'Closing Soon', slug: '/search?s=close-date&f=open' },
+  {
+    label: 'Just Resolved',
+    slug: '/search?s=resolve-date&f=resolved',
+    keywords: ['recently resolved'],
+  },
 ]
 
 export function searchPages(query: string, limit: number) {
@@ -46,3 +59,11 @@ export function searchPages(query: string, limit: number) {
     ['desc']
   ).slice(0, limit)
 }
+
+const pagesByLabel = keyBy(pages, 'label')
+
+export const defaultPages = [
+  pagesByLabel['Newest'],
+  pagesByLabel['Daily Changed'],
+  pagesByLabel['Trending'],
+]

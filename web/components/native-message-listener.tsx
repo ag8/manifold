@@ -3,19 +3,44 @@ import { setFirebaseUserViaJson } from 'common/firebase-auth'
 import { getSourceUrl, Notification } from 'common/notification'
 import {
   handlePushNotificationPermissionStatus,
+  markNotificationAsSeen,
   setPushToken,
 } from 'web/lib/firebase/notifications'
 import { useRouter } from 'next/router'
-import { getIsNative, setIsNative } from 'web/lib/native/is-native'
+import {
+  getIsNative,
+  setInstalledAppPlatform,
+  setIsNative,
+} from 'web/lib/native/is-native'
 import { useNativeMessages } from 'web/hooks/use-native-messages'
 import { webToNativeMessageType } from 'common/native-message'
+import { useEffect } from 'react'
+import { usePrivateUser } from 'web/hooks/use-user'
+import { useEvent } from 'web/hooks/use-event'
 
 export const NativeMessageListener = () => {
   const router = useRouter()
-  const handleNativeMessage = async (type: string, data: any) => {
+  const privateUser = usePrivateUser()
+
+  useEffect(() => {
+    postMessageToNative('startedListening', {})
+  }, [])
+
+  useEffect(() => {
+    const { nativePlatform } = router.query
+    if (nativePlatform !== undefined) {
+      const platform = nativePlatform as string
+      setIsNative(true, platform)
+      if (privateUser) setInstalledAppPlatform(privateUser, platform)
+    }
+  }, [privateUser, router.query])
+
+  const handleNativeMessage = useEvent(async (type: string, data: any) => {
     if (type === 'setIsNative') {
       setIsNative(true, data.platform)
+      if (privateUser) setInstalledAppPlatform(privateUser, data.platform)
     } else if (type === 'nativeFbUser') {
+      console.log('received nativeFbUser')
       await setFirebaseUserViaJson(data, app, true)
     } else if (type === 'pushNotificationPermissionStatus') {
       const { status, userId } = data
@@ -25,6 +50,7 @@ export const NativeMessageListener = () => {
       await setPushToken(userId, token)
     } else if (type === 'notification') {
       const notification = data as Notification
+      if (privateUser) markNotificationAsSeen(privateUser.id, notification.id)
       const sourceUrl = getSourceUrl(notification)
       console.log('sourceUrl', sourceUrl)
       try {
@@ -42,7 +68,8 @@ export const NativeMessageListener = () => {
         console.log(`Error navigating to link route ${newRoute}`, e)
       }
     }
-  }
+  })
+
   useNativeMessages(
     [
       'setIsNative',
@@ -64,7 +91,7 @@ export const postMessageToNative = (
 ) => {
   const isNative = getIsNative()
   if (!isNative) return
-  ;(window as any).ReactNativeWebView.postMessage(
+  ;(window as any).ReactNativeWebView?.postMessage(
     JSON.stringify({
       type,
       data,

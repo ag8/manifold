@@ -5,23 +5,14 @@ import {
   where,
   orderBy,
   OrderByDirection,
-  QueryConstraint,
   limit,
-  startAfter,
-  doc,
-  getDocs,
-  getDoc,
-  DocumentSnapshot,
   Query,
   getCountFromServer,
 } from 'firebase/firestore'
-import { uniq } from 'lodash'
 
 import { db } from './init'
 import { Bet, LimitBet } from 'common/bet'
-import { getValues, listenForValues } from './utils'
-import { getContractFromId } from './contracts'
-import { filterDefined } from 'common/util/array'
+import { listenForValues } from './utils'
 export type { Bet }
 
 export const MAX_USER_BETS_LOADED = 10000
@@ -40,6 +31,7 @@ export type BetFilter = {
   filterAntes?: boolean
   isOpenLimitOrder?: boolean
   afterTime?: number
+  beforeTime?: number
   order?: OrderByDirection
   limit?: number
 }
@@ -57,6 +49,9 @@ export const getBetsQuery = (options?: BetFilter) => {
   }
   if (options?.afterTime) {
     q = query(q, where('createdTime', '>', options.afterTime))
+  }
+  if (options?.beforeTime) {
+    q = query(q, where('createdTime', '<', options.beforeTime))
   }
   if (options?.filterChallenges) {
     q = query(q, where('isChallenge', '==', false))
@@ -81,10 +76,6 @@ export const getBetsQuery = (options?: BetFilter) => {
   return q
 }
 
-export async function listBets(options?: BetFilter) {
-  return await getValues<Bet>(getBetsQuery(options))
-}
-
 export async function getTotalBetCount(contractId: string) {
   const betsRef = query(
     collection(db, `contracts/${contractId}/bets`),
@@ -101,52 +92,6 @@ export function listenForBets(
   options?: BetFilter
 ) {
   return listenForValues<Bet>(getBetsQuery(options), setBets)
-}
-
-export async function getBets(options: {
-  userId?: string
-  contractId?: string
-  before?: string
-  limit: number
-}) {
-  const { userId, contractId, before } = options
-
-  const queryParts: QueryConstraint[] = [
-    orderBy('createdTime', 'desc'),
-    limit(options.limit),
-  ]
-  if (userId) {
-    queryParts.push(where('userId', '==', userId))
-  }
-  if (before) {
-    let beforeSnap: DocumentSnapshot
-    if (contractId) {
-      beforeSnap = await getDoc(
-        doc(db, 'contracts', contractId, 'bets', before)
-      )
-    } else {
-      beforeSnap = (
-        await getDocs(
-          query(collectionGroup(db, 'bets'), where('id', '==', before))
-        )
-      ).docs[0]
-    }
-    queryParts.push(startAfter(beforeSnap))
-  }
-
-  const querySource = contractId
-    ? collection(db, 'contracts', contractId, 'bets')
-    : collectionGroup(db, 'bets')
-  return await getValues<Bet>(query(querySource, ...queryParts))
-}
-
-export async function getContractsOfUserBets(userId: string) {
-  const bets = await listBets({ userId, ...USER_BET_FILTER })
-  const contractIds = uniq(bets.map((bet) => bet.contractId))
-  const contracts = await Promise.all(
-    contractIds.map((contractId) => getContractFromId(contractId))
-  )
-  return filterDefined(contracts)
 }
 
 export function listenForUnfilledBets(

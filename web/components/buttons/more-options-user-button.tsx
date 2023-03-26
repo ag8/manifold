@@ -2,7 +2,6 @@ import { usePrivateUser } from 'web/hooks/use-user'
 import { updateUser } from 'web/lib/firebase/users'
 import { Button } from 'web/components/buttons/button'
 import { Modal } from 'web/components/layout/modal'
-import { Row } from 'web/components/layout/row'
 import React, { useState } from 'react'
 import { Col } from 'web/components/layout/col'
 import { User } from 'common/user'
@@ -13,6 +12,8 @@ import { UncontrolledTabs } from 'web/components/layout/tabs'
 import { BlockUser } from 'web/components/profile/block-user'
 import { ReportUser } from 'web/components/profile/report-user'
 import { Title } from 'web/components/widgets/title'
+import { Row } from '../layout/row'
+import { PROJECT_ID } from 'common/envs/constants'
 
 export function MoreOptionsUserButton(props: { user: User }) {
   const { user } = props
@@ -31,9 +32,10 @@ export function MoreOptionsUserButton(props: { user: User }) {
         />
       </Button>
       <Modal open={isModalOpen} setOpen={setIsModalOpen}>
-        <Col className={'rounded-md bg-white p-4 pt-1'}>
-          {isAdmin && (
-            <Row className={'mt-3 justify-end'}>
+        <Col className={'bg-canvas-0 text-ink-1000 rounded-md p-4 '}>
+          <Title className={'!mb-2 flex justify-between'}>
+            {name}
+            {isAdmin && (
               <Button
                 color={'red'}
                 onClick={() => {
@@ -44,9 +46,26 @@ export function MoreOptionsUserButton(props: { user: User }) {
               >
                 {user.isBannedFromPosting ? 'Banned' : 'Ban User'}
               </Button>
+            )}
+          </Title>
+          {isAdmin && (
+            <Row className={'px-1'}>
+              <span>
+                <a
+                  className="text-primary-400 mr-2 text-sm hover:underline"
+                  href={firestoreUserConsolePath(user.id)}
+                >
+                  firestore user
+                </a>
+                <a
+                  className="text-primary-400 text-sm hover:underline"
+                  href={firestorePrivateConsolePath(user.id)}
+                >
+                  private user
+                </a>
+              </span>
             </Row>
           )}
-          <Title className={'!mb-2'}>{name}</Title>
           <UncontrolledTabs
             className={'mb-4'}
             tabs={[
@@ -76,4 +95,12 @@ export function MoreOptionsUserButton(props: { user: User }) {
       </Modal>
     </>
   )
+}
+
+function firestoreUserConsolePath(userId: string) {
+  return `https://console.firebase.google.com/project/${PROJECT_ID}/firestore/data/~2Fusers~2F${userId}`
+}
+
+function firestorePrivateConsolePath(userId: string) {
+  return `https://console.firebase.google.com/project/${PROJECT_ID}/firestore/data/~2Fprivate-users~2F${userId}`
 }

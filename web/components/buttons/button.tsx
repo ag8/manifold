@@ -8,6 +8,7 @@ export type ColorType =
   | 'red'
   | 'blue'
   | 'indigo'
+  | 'indigo-outline'
   | 'yellow'
   | 'gray'
   | 'dark-gray'
@@ -15,7 +16,7 @@ export type ColorType =
   | 'gradient'
   | 'gradient-pink'
   | 'gray-white'
-  | 'indigo-text-only'
+  | 'yellow-outline'
 
 const sizeClasses = {
   '2xs': 'px-2 py-1 text-xs',
@@ -27,34 +28,39 @@ const sizeClasses = {
   '2xl': 'px-6 py-3 text-xl font-semibold',
 }
 
+const baseButtonClasses =
+  'font-md inline-flex items-center justify-center rounded-md ring-inset shadow-sm transition-colors disabled:cursor-not-allowed text-center'
+
 export function buttonClass(size: SizeType, color: ColorType | 'override') {
   return clsx(
-    'font-md inline-flex items-center justify-center rounded-md ring-inset shadow-sm transition-colors disabled:cursor-not-allowed text-center',
+    baseButtonClasses,
     sizeClasses[size],
     color === 'green' &&
-      'disabled:bg-gray-200 bg-teal-500 text-white hover:bg-teal-600',
+      'disabled:bg-ink-300 bg-teal-500 text-white hover:bg-teal-600',
     color === 'red' &&
-      'disabled:bg-gray-200 bg-scarlet-300 text-white hover:bg-scarlet-400',
+      'disabled:bg-ink-300 bg-scarlet-300 text-white hover:bg-scarlet-400',
     color === 'yellow' &&
-      'disabled:bg-gray-200 bg-yellow-400 text-white hover:bg-yellow-500',
+      'disabled:bg-ink-300 bg-yellow-400 text-white hover:bg-yellow-500',
     color === 'blue' &&
-      'disabled:bg-gray-200 bg-blue-400 text-white hover:bg-blue-500',
+      'disabled:bg-ink-300 bg-blue-400 text-white hover:bg-blue-500',
     color === 'indigo' &&
-      'disabled:bg-gray-200 bg-indigo-500 text-white hover:bg-indigo-600',
+      'disabled:bg-ink-300 bg-primary-500 text-white hover:bg-primary-600',
+    color === 'indigo-outline' &&
+      'border-2 border-primary-500 disabled:border-ink-300 disabled:text-ink-300 text-primary-500 hover:bg-primary-500 hover:text-ink-0 disabled:focus:bg-inherit disabled:hover:bg-inherit',
     color === 'gray' &&
-      'bg-gray-200 text-gray-600 enabled:hover:bg-gray-300 enabled:hover:text-gray-700 disabled:opacity-50',
+      'bg-ink-200 text-ink-600 enabled:hover:bg-ink-300 enabled:hover:text-ink-700 disabled:opacity-50',
     color === 'dark-gray' &&
-      'bg-gray-600 text-white hover:bg-gray-700 disabled:opacity-50',
+      'bg-gray-500 dark:bg-ink-400 text-ink-0 hover:bg-ink-700 disabled:opacity-50',
     color === 'gray-outline' &&
-      'ring-2 ring-gray-500 text-gray-500 enabled:hover:bg-gray-500 enabled:hover:text-white disabled:opacity-50',
+      'ring-2 ring-ink-500 text-ink-500 enabled:hover:bg-ink-500 enabled:hover:text-ink-0 disabled:opacity-50',
     color === 'gradient' &&
-      'disabled:bg-gray-200 enabled:bg-gradient-to-r from-indigo-500 to-blue-500 text-white hover:from-indigo-700 hover:to-blue-700',
+      'disabled:bg-ink-300 enabled:bg-gradient-to-r from-primary-500 to-blue-500 text-white hover:from-primary-700 hover:to-blue-700',
     color === 'gradient-pink' &&
-      'disabled:bg-gray-200 enabled:bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white',
+      'disabled:bg-ink-300 enabled:bg-gradient-to-r from-primary-500 to-fuchsia-500 text-white',
     color === 'gray-white' &&
-      'text-gray-600 hover:bg-gray-200 shadow-none disabled:opacity-50',
-    color === 'indigo-text-only' &&
-      'text-indigo-500 hover:text-indigo-700 shadow-none disabled:text-gray-400 bg-inherit'
+      'text-ink-600 hover:bg-ink-200 shadow-none disabled:opacity-50',
+    color === 'yellow-outline' &&
+      'ring-2 ring-yellow-500 text-yellow-500 enabled:hover:bg-yellow-500 enabled:hover:text-ink-0 disabled:opacity-50'
   )
 }
 
@@ -122,7 +128,7 @@ export function IconButton(props: {
       className={clsx(
         'inline-flex items-center justify-center transition-colors disabled:cursor-not-allowed',
         sizeClasses[size],
-        'text-gray-500 hover:text-gray-600 disabled:text-gray-200',
+        'text-ink-500 hover:text-ink-600 disabled:text-ink-200',
         className
       )}
       disabled={disabled || loading}

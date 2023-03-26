@@ -1,3 +1,4 @@
+import { cleanUsername } from 'common/util/clean-username'
 import { useRouter } from 'next/router'
 import { useEffect } from 'react'
 
@@ -14,9 +15,9 @@ export const useSaveReferral = (
   const router = useRouter()
 
   useEffect(() => {
-    const { referrer } = router.query as {
-      referrer?: string
-    }
+    const referrer = router.query.r
+      ? decodeBase64(router.query.r as string)
+      : (router.query.referrer as string)
 
     const referrerOrDefault = referrer || options?.defaultReferrerUsername
 
@@ -28,4 +29,8 @@ export const useSaveReferral = (
       })
     }
   }, [user, router, JSON.stringify(options)])
+}
+
+const decodeBase64 = (base64: string) => {
+  return Buffer.from(cleanUsername(base64), 'base64').toString()
 }

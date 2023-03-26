@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { DateDoc, Post } from 'common/post'
 import {
   getAllPosts,
-  getPostsByUser,
   listenForDateDocs,
   listenForPost,
 } from 'web/lib/firebase/posts'
 import { useEffectCheckEquality } from './use-effect-check-equality'
 import { inMemoryStore, usePersistentState } from './use-persistent-state'
+import { sortBy } from 'lodash'
+import { getPostsByUser } from 'web/lib/supabase/post'
 
 export const usePost = (postId: string | undefined) => {
   const [post, setPost] = useState<Post | null | undefined>()
@@ -65,7 +66,9 @@ export const useDateDocs = () => {
   const [dateDocs, setDateDocs] = useState<DateDoc[]>()
 
   useEffect(() => {
-    return listenForDateDocs(setDateDocs)
+    return listenForDateDocs((docs) =>
+      setDateDocs(sortBy(docs, 'createdTime').reverse())
+    )
   }, [])
 
   return dateDocs

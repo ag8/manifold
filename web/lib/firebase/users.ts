@@ -10,7 +10,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  Query,
   setDoc,
   startAfter,
   updateDoc,
@@ -18,12 +17,7 @@ import {
 } from 'firebase/firestore'
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { app, db } from './init'
-import {
-  PortfolioMetrics,
-  PrivateUser,
-  User,
-  UserAndPrivateUser,
-} from 'common/user'
+import { PrivateUser, User, UserAndPrivateUser } from 'common/user'
 import { coll, getValues, listenForValue, listenForValues } from './utils'
 import { safeLocalStorage } from '../util/local'
 import { filterDefined } from 'common/util/array'
@@ -34,6 +28,8 @@ import utc from 'dayjs/plugin/utc'
 import { track } from '../service/analytics'
 import { postMessageToNative } from 'web/components/native-message-listener'
 import { getIsNative } from 'web/lib/native/is-native'
+import { Contract } from 'common/contract'
+import { nativeSignOut } from 'web/lib/native/native-messages'
 
 dayjs.extend(utc)
 
@@ -125,7 +121,7 @@ export function writeReferralInfo(
     groupId?: string
   }
 ) {
-  const local = safeLocalStorage()
+  const local = safeLocalStorage
   const cachedReferralUser = local?.getItem(CACHED_REFERRAL_USERNAME_KEY)
   const { contractId, explicitReferrer, groupId } = otherOptions || {}
 
@@ -156,7 +152,7 @@ export async function setCachedReferralInfoForUser(user: User | null) {
   const userCreatedTime = dayjs(user.createdTime)
   if (now.diff(userCreatedTime, 'minute') > 5) return
 
-  const local = safeLocalStorage()
+  const local = safeLocalStorage
   const cachedReferralUsername = local?.getItem(CACHED_REFERRAL_USERNAME_KEY)
   const cachedReferralContractId = local?.getItem(
     CACHED_REFERRAL_CONTRACT_ID_KEY
@@ -213,10 +209,8 @@ export async function firebaseLogin() {
 }
 
 export async function firebaseLogout() {
-  if (getIsNative()) {
-    // Post the message back to expo
-    postMessageToNative('signOut', {})
-  }
+  if (getIsNative()) nativeSignOut()
+
   await auth.signOut()
 }
 
@@ -299,19 +293,6 @@ export async function follow(userId: string, followedUserId: string) {
 export async function unfollow(userId: string, unfollowedUserId: string) {
   const followDoc = doc(collection(users, userId, 'follows'), unfollowedUserId)
   await deleteDoc(followDoc)
-}
-
-export function getPortfolioHistory(userId: string, since: number) {
-  return getValues<PortfolioMetrics>(getPortfolioHistoryQuery(userId, since))
-}
-
-export function getPortfolioHistoryQuery(userId: string, since: number) {
-  return query(
-    collectionGroup(db, 'portfolioHistory'),
-    where('userId', '==', userId),
-    where('timestamp', '>=', since),
-    orderBy('timestamp', 'asc')
-  ) as Query<PortfolioMetrics>
 }
 
 export function listenForFollows(
@@ -405,6 +386,27 @@ export const getUsersBlockFacetFilters = (
     )
   )
   return facetFilters
+}
+
+export const isContractBlocked = (
+  privateUser: PrivateUser | undefined | null,
+  contract: Contract
+) => {
+  if (!privateUser) return false
+
+  const {
+    blockedContractIds,
+    blockedByUserIds,
+    blockedUserIds,
+    blockedGroupSlugs,
+  } = privateUser
+
+  return (
+    blockedContractIds?.includes(contract.id) ||
+    contract.groupSlugs?.some((slug) => blockedGroupSlugs?.includes(slug)) ||
+    blockedByUserIds?.includes(contract.creatorId) ||
+    blockedUserIds?.includes(contract.creatorId)
+  )
 }
 
 export async function getTotalContractCreated(userId: string) {

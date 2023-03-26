@@ -1,11 +1,10 @@
 import { Bet } from 'common/bet'
-import { Contract } from 'common/contract'
+import { Contract, contractPath } from 'common/contract'
 import { DOMAIN } from 'common/envs/constants'
 import { useEffect } from 'react'
 import {
   BinaryResolutionOrChance,
   ContractCard,
-  FreeResponseResolutionOrChance,
   NumericResolutionOrExpectation,
   PseudoNumericResolutionOrExpectation,
 } from 'web/components/contract/contract-card'
@@ -20,16 +19,21 @@ import { Col } from 'web/components/layout/col'
 import { Row } from 'web/components/layout/row'
 import { useMeasureSize } from 'web/hooks/use-measure-size'
 import { fromPropz, usePropz } from 'web/hooks/use-propz'
-import { listBets } from 'web/lib/firebase/bets'
-import { contractPath, getContractFromSlug } from 'web/lib/firebase/contracts'
+import { getContractFromSlug } from 'web/lib/firebase/contracts'
 import Custom404 from '../../404'
 import { track } from 'web/lib/service/analytics'
 import { useContract } from 'web/hooks/use-contracts'
 import { useRouter } from 'next/router'
 import { Avatar } from 'web/components/widgets/avatar'
-import { OrderByDirection } from 'firebase/firestore'
 import { useUser } from 'web/hooks/use-user'
-import { HistoryPoint } from 'web/components/charts/generic-charts'
+import {
+  HistoryPoint,
+  useSingleValueHistoryChartViewScale,
+} from 'web/components/charts/generic-charts'
+import { getBets, getBetFields } from 'web/lib/supabase/bets'
+import { NoSEO } from 'web/components/NoSEO'
+import { ContractSEO } from 'web/pages/[username]/[contractSlug]'
+import { useIsDarkMode } from 'web/hooks/dark-mode-context'
 
 type HistoryData = { bets?: Bet[]; points?: HistoryPoint<Partial<Bet>>[] }
 
@@ -42,22 +46,29 @@ async function getHistoryData(contract: Contract) {
   if (contract.outcomeType === 'NUMERIC') {
     return null
   }
-  const bets = await listBets({
-    contractId: contract.id,
-    ...CONTRACT_BET_LOADING_OPTS,
-    limit: 10000,
-    order: 'desc' as OrderByDirection,
-  })
   switch (contract.outcomeType) {
     case 'BINARY':
     case 'PSEUDO_NUMERIC':
       // We could include avatars in the embed, but not sure it's worth it
-      const points = bets.map((bet) => ({
+      const points = (
+        await getBetFields(['createdTime', 'probAfter'], {
+          contractId: contract.id,
+          ...CONTRACT_BET_LOADING_OPTS,
+          limit: 50000,
+          order: 'desc',
+        })
+      ).map((bet) => ({
         x: bet.createdTime,
         y: bet.probAfter,
       }))
       return { points } as HistoryData
     default: // choice contracts
+      const bets = await getBets({
+        contractId: contract.id,
+        ...CONTRACT_BET_LOADING_OPTS,
+        limit: 50000,
+        order: 'desc',
+      })
       return { bets } as HistoryData
   }
 }
@@ -74,7 +85,6 @@ export async function getStaticPropz(props: {
   const historyData = await getHistoryData(contract)
   return {
     props: { contract, historyData },
-    revalidate: 60, // regenerate after a minute
   }
 }
 
@@ -112,6 +122,8 @@ export default function ContractEmbedPage(props: {
   // return (height < 250px) ? Card : SmolView
   return (
     <>
+      <NoSEO />
+      <ContractSEO contract={contract} />
       <div className="contents [@media(min-height:250px)]:hidden">
         <ContractCard
           contract={contract}
@@ -136,11 +148,14 @@ const ContractChart = (props: {
   color?: string
 }) => {
   const { contract, data, ...rest } = props
+  const viewScale = useSingleValueHistoryChartViewScale()
+
   switch (contract.outcomeType) {
     case 'BINARY':
       return (
         <BinaryContractChart
           {...rest}
+          viewScaleProps={viewScale}
           contract={contract}
           betPoints={data?.points ?? []}
         />
@@ -149,6 +164,7 @@ const ContractChart = (props: {
       return (
         <PseudoNumericContractChart
           {...rest}
+          viewScaleProps={viewScale}
           contract={contract}
           betPoints={data?.points ?? []}
         />
@@ -186,29 +202,37 @@ function ContractSmolView(props: {
   const href = `https://${DOMAIN}${contractPath(contract)}`
 
   const { setElem, width: graphWidth, height: graphHeight } = useMeasureSize()
-  const questionColor = textColor ?? 'rgb(67, 56, 202)' // text-indigo-700
+
+  const isDarkMode = useIsDarkMode()
 
   return (
-    <Col className="h-[100vh] w-full bg-white p-4">
+    <Col className="bg-canvas-0 h-[100vh] w-full p-4">
       <Row className="justify-between gap-4">
         <div>
           <a
             href={href}
             target="_blank"
-            className="text-xl md:text-2xl"
-            style={{ color: questionColor }}
+            className="text-primary-700 text-xl md:text-2xl"
+            style={{
+              color: textColor,
+              filter: isDarkMode && textColor ? 'invert(1)' : undefined,
+            }}
           >
             {question}
           </a>
         </div>
-        {isBinary && <BinaryResolutionOrChance contract={contract} />}
-
-        {isPseudoNumeric && (
-          <PseudoNumericResolutionOrExpectation contract={contract} />
+        {isBinary && (
+          <BinaryResolutionOrChance
+            contract={contract}
+            className="!flex-col !gap-0"
+          />
         )}
 
-        {outcomeType === 'FREE_RESPONSE' && (
-          <FreeResponseResolutionOrChance contract={contract} truncate="long" />
+        {isPseudoNumeric && (
+          <PseudoNumericResolutionOrExpectation
+            contract={contract}
+            className="!flex-col !gap-0"
+          />
         )}
 
         {outcomeType === 'NUMERIC' && (
@@ -217,7 +241,7 @@ function ContractSmolView(props: {
       </Row>
       <Details contract={contract} />
 
-      <div className="min-h-0 flex-1" ref={setElem}>
+      <div className="text-ink-1000 min-h-0 flex-1" ref={setElem}>
         {graphWidth != null && graphHeight != null && (
           <ContractChart
             contract={contract}
@@ -237,17 +261,17 @@ const Details = (props: { contract: Contract }) => {
     props.contract
 
   return (
-    <div className="relative right-0 mt-2 flex flex-wrap items-center gap-4 text-xs text-gray-400">
-      <span className="flex gap-1">
+    <div className="text-ink-400 relative right-0 mt-2 flex flex-wrap items-center gap-4 text-xs">
+      <span className="text-ink-600 flex gap-1">
         <Avatar
-          size="xxs"
+          size="2xs"
           avatarUrl={creatorAvatarUrl}
           username={creatorUsername}
           noLink
         />
         {creatorName}
       </span>
-      <CloseOrResolveTime contract={props.contract} isCreator disabled />
+      <CloseOrResolveTime contract={props.contract} />
       <span>{uniqueBettorCount} traders</span>
     </div>
   )

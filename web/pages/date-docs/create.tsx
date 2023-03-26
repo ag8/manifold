@@ -26,7 +26,6 @@ export default function CreateDateDocPage() {
   useRedirectIfSignedOut()
 
   const title = `${user?.name}'s Date Doc`
-  const subtitle = 'Manifold dating docs'
   const [birthday, setBirthday] = useState<undefined | string>(undefined)
   const [createMarket, setCreateMarket] = useState(true)
   const [question, setQuestion] = useState(
@@ -59,7 +58,6 @@ export default function CreateDateDocPage() {
       | 'creatorName'
     > & { question?: string } = removeUndefinedProps({
       title,
-      subtitle,
       content: editor.getJSON(),
       bounty: 0,
       birthday: birthdayTime,
@@ -80,7 +78,7 @@ export default function CreateDateDocPage() {
       <div className="mx-auto w-full max-w-3xl">
         <div className="rounded-lg px-6 py-4 pb-4 sm:py-0">
           <Row className="mb-8 items-center justify-between">
-            <Title className="!my-0 text-blue-500" text="Your Date Doc" />
+            <Title className="!my-0" children="Your Date Doc" />
             <Button
               type="submit"
               loading={isSubmitting}
@@ -90,7 +88,6 @@ export default function CreateDateDocPage() {
                 await saveDateDoc()
                 setIsSubmitting(false)
               }}
-              color="blue"
             >
               {isSubmitting ? 'Publishing...' : 'Publish'}
             </Button>
@@ -98,7 +95,7 @@ export default function CreateDateDocPage() {
 
           <Col className="gap-8">
             <Col className="max-w-[160px] justify-start gap-4">
-              <div className="">Birthday</div>
+              <div>Birthday</div>
               <Input
                 type={'date'}
                 onClick={(e) => e.stopPropagation()}
@@ -110,9 +107,7 @@ export default function CreateDateDocPage() {
             </Col>
 
             <Col className="gap-4">
-              <div className="">
-                Tell us about you! What are you looking for?
-              </div>
+              <div>Tell us about you! What are you looking for?</div>
               <TextEditor editor={editor} />
             </Col>
 
@@ -122,7 +117,7 @@ export default function CreateDateDocPage() {
                   on={createMarket}
                   setOn={(on) => setCreateMarket(on)}
                 />
-                Create an (unlisted) prediction market attached to the date doc
+                Create a (private) prediction market attached to the date doc
               </Row>
 
               <Col className="gap-2">
@@ -132,7 +127,7 @@ export default function CreateDateDocPage() {
                   onChange={(e) => setQuestion(e.target.value || '')}
                   disabled={!createMarket}
                 />
-                <div className="ml-2 text-gray-500">
+                <div className="text-ink-500 ml-2">
                   Cost: {ENV_CONFIG.moneyMoniker}100
                 </div>
               </Col>

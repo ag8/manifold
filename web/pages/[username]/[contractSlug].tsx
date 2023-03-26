@@ -1,130 +1,122 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react'
+import clsx from 'clsx'
 import { first } from 'lodash'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { ContractOverview } from 'web/components/contract/contract-overview'
-import { BetPanel } from 'web/components/bet/bet-panel'
-import { Col } from 'web/components/layout/col'
-import { usePrivateUser, useUser } from 'web/hooks/use-user'
-import { ResolutionPanel } from 'web/components/resolution-panel'
-import { Spacer } from 'web/components/layout/spacer'
-import {
-  Contract,
-  getContractFromSlug,
-  getRecommendedContracts,
-  tradingAllowed,
-} from 'web/lib/firebase/contracts'
-import { SEO } from 'web/components/SEO'
-import { Page } from 'web/components/layout/page'
-import {
-  Bet,
-  BetFilter,
-  getTotalBetCount,
-  listBets,
-} from 'web/lib/firebase/bets'
-import Custom404 from '../404'
-import { AnswersPanel } from 'web/components/answers/answers-panel'
-import { fromPropz, usePropz } from 'web/hooks/use-propz'
-import { ContractTabs } from 'web/components/contract/contract-tabs'
-import { NumericBetPanel } from 'web/components/bet/numeric-bet-panel'
-import { NumericResolutionPanel } from 'web/components/numeric-resolution-panel'
-import { useIsIframe } from 'web/hooks/use-is-iframe'
-import ContractEmbedPage from '../embed/[username]/[contractSlug]'
-import { useBets } from 'web/hooks/use-bets'
-import { CPMMBinaryContract } from 'common/contract'
-import { AlertBox } from 'web/components/widgets/alert-box'
-import { useTracking } from 'web/hooks/use-tracking'
-import { useSaveReferral } from 'web/hooks/use-save-referral'
-import { getOpenGraphProps } from 'common/contract-details'
-import { ContractDescription } from 'web/components/contract/contract-description'
-import { ContractLeaderboard } from 'web/components/contract/contract-leaderboard'
-import { ContractsGrid } from 'web/components/contract/contracts-grid'
-import { Title } from 'web/components/widgets/title'
-import { useAdmin } from 'web/hooks/use-admin'
-import { UserBetsSummary } from 'web/components/bet/bet-summary'
-import { listAllComments } from 'web/lib/firebase/comments'
-import { ContractComment } from 'common/comment'
-import { ScrollToTopButton } from 'web/components/buttons/scroll-to-top-button'
 import { Answer } from 'common/answer'
-import { useEvent } from 'web/hooks/use-event'
+import { ContractComment } from 'common/comment'
+import { visibility } from 'common/contract'
+import { ContractMetric } from 'common/contract-metric'
+import { getContractOGProps, getSeoDescription } from 'common/contract-seo'
+import { HOUSE_BOT_USERNAME } from 'common/envs/constants'
+import { removeUndefinedProps } from 'common/util/object'
+import Head from 'next/head'
+import { AnswersPanel } from 'web/components/answers/answers-panel'
+import { UserBetsSummary } from 'web/components/bet/bet-summary'
+import { NumericBetPanel } from 'web/components/bet/numeric-bet-panel'
+import { ScrollToTopButton } from 'web/components/buttons/scroll-to-top-button'
+import { HistoryPoint } from 'web/components/charts/generic-charts'
+import { BackRow } from 'web/components/contract/back-row'
+import { ContractDescription } from 'web/components/contract/contract-description'
+import { ContractDetails } from 'web/components/contract/contract-details'
+import { ContractLeaderboard } from 'web/components/contract/contract-leaderboard'
+import { ContractOverview } from 'web/components/contract/contract-overview'
+import { ContractTabs } from 'web/components/contract/contract-tabs'
 import { CreatorSharePanel } from 'web/components/contract/creator-share-panel'
+import { PrivateContractPage } from 'web/components/contract/private-contract'
+import { QfResolutionPanel } from 'web/components/contract/qf-overview'
+import { RelatedContractsList } from 'web/components/contract/related-contracts-widget'
+import { Col } from 'web/components/layout/col'
+import { Page } from 'web/components/layout/page'
+import { Row } from 'web/components/layout/row'
+import { Spacer } from 'web/components/layout/spacer'
+import { NumericResolutionPanel } from 'web/components/numeric-resolution-panel'
+import { ResolutionPanel } from 'web/components/resolution-panel'
+import { SEO } from 'web/components/SEO'
+import { AlertBox } from 'web/components/widgets/alert-box'
+import { Linkify } from 'web/components/widgets/linkify'
+import { useAdmin } from 'web/hooks/use-admin'
+import { useBets } from 'web/hooks/use-bets'
 import { useContract } from 'web/hooks/use-contracts'
+import { useEvent } from 'web/hooks/use-event'
+import { useIsIframe } from 'web/hooks/use-is-iframe'
+import { useRelatedMarkets } from 'web/hooks/use-related-contracts'
+import { useSaveCampaign } from 'web/hooks/use-save-campaign'
+import { useSaveReferral } from 'web/hooks/use-save-referral'
+import { useSaveContractVisitsLocally } from 'web/hooks/use-save-visits'
+import { useSavedContractMetrics } from 'web/hooks/use-saved-contract-metrics'
+import { useTracking } from 'web/hooks/use-tracking'
+import { usePrivateUser, useUser } from 'web/hooks/use-user'
+import { Bet, BetFilter } from 'web/lib/firebase/bets'
 import {
-  getBinaryContractUserContractMetrics,
   ContractMetricsByOutcome,
   getTopContractMetrics,
 } from 'web/lib/firebase/contract-metrics'
-import { OrderByDirection } from 'firebase/firestore'
-import { removeUndefinedProps } from 'common/util/object'
-import { ContractMetric } from 'common/contract-metric'
-import { HOUSE_BOT_USERNAME } from 'common/envs/constants'
-import { HistoryPoint } from 'web/components/charts/generic-charts'
-import { useSavedContractMetrics } from 'web/hooks/use-saved-contract-metrics'
-import { BackRow } from 'web/components/contract/back-row'
+import {
+  Contract,
+  getContractFromSlug,
+  tradingAllowed,
+} from 'web/lib/firebase/contracts'
+import { track } from 'web/lib/service/analytics'
+import { getContractParams } from 'web/lib/supabase/contracts'
+import Custom404 from '../404'
+import ContractEmbedPage from '../embed/[username]/[contractSlug]'
 
-const CONTRACT_BET_FILTER: BetFilter = {
+export const CONTRACT_BET_FILTER: BetFilter = {
   filterRedemptions: true,
   filterChallenges: true,
-  filterAntes: true,
+  filterAntes: false,
 }
 
 type HistoryData = { bets: Bet[]; points: HistoryPoint<Partial<Bet>>[] }
 
-export const getStaticProps = fromPropz(getStaticPropz)
-export async function getStaticPropz(props: {
+export type ContractParams = {
+  contract: Contract | null
+  historyData: HistoryData
+  pointsString?: string
+  comments: ContractComment[]
+  userPositionsByOutcome: ContractMetricsByOutcome
+  totalPositions: number
+  totalBets: number
+  topContractMetrics: ContractMetric[]
+  creatorTwitter?: string
+  relatedContracts: Contract[]
+}
+
+export async function getStaticProps(ctx: {
   params: { username: string; contractSlug: string }
 }) {
-  const { contractSlug } = props.params
-  const contract = (await getContractFromSlug(contractSlug)) || null
-  const contractId = contract?.id
-  const totalBets = contractId ? await getTotalBetCount(contractId) : 0
-  const useBetPoints =
-    contract?.outcomeType === 'BINARY' ||
-    contract?.outcomeType === 'PSEUDO_NUMERIC'
-  // Prioritize newer bets via descending order
-  const bets = contractId
-    ? await listBets({
-        contractId,
-        ...CONTRACT_BET_FILTER,
-        limit: useBetPoints ? 10000 : 4000,
-        order: 'desc' as OrderByDirection,
-      })
-    : []
-  const includeAvatar = totalBets < 1000
-  const betPoints = useBetPoints
-    ? bets.map(
-        (bet) =>
-          removeUndefinedProps({
-            x: bet.createdTime,
-            y: bet.probAfter,
-            obj: includeAvatar
-              ? { userAvatarUrl: bet.userAvatarUrl }
-              : undefined,
-          }) as HistoryPoint<Partial<Bet>>
-      )
-    : []
-  const comments = contractId ? await listAllComments(contractId, 100) : []
+  const { contractSlug } = ctx.params
+  // Fetched from Firebase to avoid replicator delay on first create.
+  // TODO: Switch to Supabase once contracts are created in supabase.
+  const contract = (await getContractFromSlug(contractSlug)) ?? null
 
-  const userPositionsByOutcome =
-    contractId && contract?.outcomeType === 'BINARY'
-      ? await getBinaryContractUserContractMetrics(contractId, 100)
-      : {}
-  const topContractMetrics = contractId
-    ? await getTopContractMetrics(contractId, 10)
-    : []
-
-  return {
-    props: {
-      contract,
-      historyData: {
-        bets: useBetPoints ? bets.slice(0, 100) : bets,
-        points: betPoints,
+  if (contract === null) {
+    return {
+      props: {
+        contractSlug,
+        visibility: null,
       },
-      comments,
-      userPositionsByOutcome,
-      totalBets,
-      topContractMetrics,
-    },
-    revalidate: 60,
+    }
+  }
+
+  const visibility = contract ? contract.visibility : null
+  if (visibility === 'private') {
+    return {
+      props: {
+        contractSlug,
+        visibility: 'private',
+      },
+    }
+  } else {
+    const contractParams = await getContractParams(contract)
+
+    return {
+      props: {
+        visibility,
+        contractSlug,
+        contractParams,
+      },
+    }
   }
 }
 
@@ -133,49 +125,80 @@ export async function getStaticPaths() {
 }
 
 export default function ContractPage(props: {
-  contract: Contract | null
-  historyData: HistoryData
-  comments: ContractComment[]
-  userPositionsByOutcome: ContractMetricsByOutcome
-  totalBets: number
-  topContractMetrics: ContractMetric[]
+  visibility: visibility | null
+  contractSlug: string
+  contractParams?: ContractParams
 }) {
-  props = usePropz(props, getStaticPropz) ?? {
-    contract: null,
-    historyData: { bets: [], points: [] },
-    comments: [],
-    userPositionsByOutcome: {},
-    totalBets: 0,
-    topContractMetrics: [],
+  const { visibility, contractSlug, contractParams } = props
+  if (!visibility) {
+    return <Custom404 />
   }
+  return (
+    <Page maxWidth="max-w-[1400px]">
+      {visibility == 'private' && (
+        <PrivateContractPage contractSlug={contractSlug} />
+      )}
+      {visibility != 'private' && contractParams && (
+        <NonPrivateContractPage contractParams={contractParams} />
+      )}
+    </Page>
+  )
+}
+
+export function NonPrivateContractPage(props: {
+  contractParams: ContractParams
+}) {
+  const { contract, historyData, pointsString } = props.contractParams
 
   const inIframe = useIsIframe()
   if (inIframe) {
-    return <ContractEmbedPage {...props} />
+    return <ContractEmbedPage contract={contract} historyData={historyData} />
   }
-
-  const { contract } = props
-
   if (!contract) {
     return <Custom404 />
-  }
-
-  return <ContractPageContent key={contract.id} {...{ ...props, contract }} />
+  } else
+    return (
+      <>
+        <ContractSEO contract={contract} points={pointsString} />
+        <ContractPageContent
+          key={contract.id}
+          contractParams={
+            props.contractParams as ContractParams & { contract: Contract }
+          }
+        />
+      </>
+    )
 }
 
-export function ContractPageContent(
-  props: Parameters<typeof ContractPage>[0] & {
-    contract: Contract
-  }
-) {
-  const { userPositionsByOutcome, comments, topContractMetrics } = props
-  const contract = useContract(props.contract?.id) ?? props.contract
+export function ContractPageContent(props: {
+  contractParams: ContractParams & { contract: Contract }
+}) {
+  const { contractParams } = props
+  const {
+    userPositionsByOutcome,
+    comments,
+    totalPositions,
+    creatorTwitter,
+    relatedContracts,
+  } = contractParams
+  const contract =
+    useContract(contractParams.contract?.id) ?? contractParams.contract
   const user = useUser()
   const contractMetrics = useSavedContractMetrics(contract)
   const privateUser = usePrivateUser()
   const blockedUserIds = privateUser?.blockedUserIds ?? []
-  const isCreator = user?.id === contract.creatorId
+  const [topContractMetrics, setTopContractMetrics] = useState<
+    ContractMetric[]
+  >(contractParams.topContractMetrics)
 
+  useEffect(() => {
+    // If the contract resolves while the user is on the page, get the top contract metrics
+    if (contract.resolution && topContractMetrics.length === 0) {
+      getTopContractMetrics(contract.id, 10).then(setTopContractMetrics)
+    }
+  }, [contract.resolution, contract.id, topContractMetrics.length])
+
+  useSaveCampaign()
   useTracking(
     'view market',
     {
@@ -185,38 +208,43 @@ export function ContractPageContent(
     },
     true
   )
+  useSaveContractVisitsLocally(user === null, contract.id)
 
   // Static props load bets in descending order by time
-  const lastBetTime = first(props.historyData.bets)?.createdTime
+  const lastBetTime = first(contractParams.historyData.bets)?.createdTime
   const newBets = useBets({
     contractId: contract.id,
     afterTime: lastBetTime,
     ...CONTRACT_BET_FILTER,
   })
-  const totalBets = props.totalBets + (newBets?.length ?? 0)
+  const totalBets = contractParams.totalBets + (newBets?.length ?? 0)
   const bets = useMemo(
-    () => props.historyData.bets.concat(newBets ?? []),
-    [props.historyData.bets, newBets]
+    () => contractParams.historyData.bets.concat(newBets ?? []),
+    [contractParams.historyData.bets, newBets]
   )
   const betPoints = useMemo(
     () =>
-      props.historyData.points.concat(
+      contractParams.historyData.points.concat(
         newBets?.map((bet) => ({
           x: bet.createdTime,
           y: bet.probAfter,
           obj: { userAvatarUrl: bet.userAvatarUrl },
         })) ?? []
       ),
-    [props.historyData.points, newBets]
+    [contractParams.historyData.points, newBets]
   )
 
-  const { isResolved, question, outcomeType, resolution } = contract
+  const { isResolved, outcomeType, resolution, closeTime, creatorId } = contract
+
+  const isAdmin = useAdmin()
+  const isCreator = creatorId === user?.id
+  const isClosed = closeTime && closeTime < Date.now()
+
+  const [showResolver, setShowResolver] = useState(
+    (isCreator || isAdmin) && !isResolved && (closeTime ?? 0) < Date.now()
+  )
 
   const allowTrade = tradingAllowed(contract)
-  const isAdmin = useAdmin()
-  const allowResolve = !isResolved && (isCreator || isAdmin) && !!user
-
-  const ogCardProps = getOpenGraphProps(contract)
 
   useSaveReferral(user, {
     defaultReferrerUsername: contract.creatorUsername,
@@ -239,173 +267,179 @@ export function ContractPageContent(
   })
   const onCancelAnswerResponse = useEvent(() => setAnswerResponse(undefined))
 
+  const { contracts: relatedMarkets, loadMore } = useRelatedMarkets(
+    contract,
+    relatedContracts
+  )
+
   return (
-    <Page
-      rightSidebar={
-        user || user === null ? (
-          <ContractPageSidebar contract={contract} />
-        ) : (
-          <div />
-        )
-      }
-    >
-      {ogCardProps && (
-        <SEO
-          title={question}
-          description={ogCardProps.description}
-          url={`/${contract.creatorUsername}/${contract.slug}`}
-          ogCardProps={ogCardProps}
-        />
+    <>
+      {creatorTwitter && (
+        <Head>
+          <meta name="twitter:creator" content={`@${creatorTwitter}`} />
+        </Head>
       )}
-      <BackRow />
-      <Col className="w-full justify-between rounded bg-white pb-6 pt-4 pl-1 pr-2 sm:px-2 md:px-6 md:py-8">
-        <ContractOverview
-          contract={contract}
-          bets={bets}
-          betPoints={betPoints}
-        />
 
-        <ContractDescription className="mt-6 mb-2 px-2" contract={contract} />
+      {user && <BackRow />}
 
-        {isCreator ? (
-          <CreatorSharePanel contract={contract} />
-        ) : (
-          <Spacer h={4} />
-        )}
+      <Row className="w-full items-start gap-8 self-center">
+        <Col
+          className={clsx(
+            'bg-canvas-0 mb-4 w-full max-w-3xl rounded px-4 py-4 md:px-8 md:py-8 xl:w-[70%]',
+            // Keep content in view when scrolling related markets on desktop.
+            'sticky bottom-0 min-h-screen self-end'
+          )}
+        >
+          <Col className="gap-3 sm:gap-4">
+            <ContractDetails contract={contract} />
+            <Linkify
+              className="text-primary-700 text-lg sm:text-2xl"
+              text={contract.question}
+            />
+            <ContractOverview
+              contract={contract}
+              bets={bets}
+              betPoints={betPoints}
+            />
+          </Col>
 
-        {outcomeType === 'NUMERIC' && (
-          <AlertBox
-            title="Warning"
-            text="Distributional numeric markets were introduced as an experimental feature and are now deprecated."
+          <ContractDescription
+            className="mt-2 xl:mt-6"
+            contract={contract}
+            toggleResolver={() => setShowResolver(!showResolver)}
           />
-        )}
 
-        {(outcomeType === 'FREE_RESPONSE' ||
-          outcomeType === 'MULTIPLE_CHOICE') && (
-          <>
-            <Spacer h={4} />
-            <AnswersPanel
-              contract={contract}
-              onAnswerCommentClick={onAnswerCommentClick}
-            />
-            <Spacer h={4} />
-          </>
-        )}
-
-        {outcomeType === 'NUMERIC' && allowTrade && (
-          <NumericBetPanel className="xl:hidden" contract={contract} />
-        )}
-
-        {allowResolve &&
-          (outcomeType === 'NUMERIC' || outcomeType === 'PSEUDO_NUMERIC' ? (
-            <NumericResolutionPanel
-              isAdmin={isAdmin}
-              creator={user}
-              isCreator={isCreator}
-              contract={contract}
-            />
-          ) : (
-            outcomeType === 'BINARY' && (
-              <ResolutionPanel
-                isAdmin={isAdmin}
+          {showResolver &&
+            user &&
+            !resolution &&
+            (outcomeType === 'NUMERIC' || outcomeType === 'PSEUDO_NUMERIC' ? (
+              <NumericResolutionPanel
+                isAdmin={!!isAdmin}
                 creator={user}
-                isCreator={isCreator}
+                isCreator={!isAdmin}
                 contract={contract}
               />
-            )
-          ))}
+            ) : outcomeType === 'BINARY' ? (
+              <ResolutionPanel
+                isAdmin={!!isAdmin}
+                creator={user}
+                isCreator={!isAdmin}
+                contract={contract}
+              />
+            ) : outcomeType === 'QUADRATIC_FUNDING' ? (
+              <QfResolutionPanel contract={contract} />
+            ) : null)}
 
-        {isResolved && resolution !== 'CANCEL' && (
-          <>
-            <ContractLeaderboard
-              topContractMetrics={topContractMetrics.filter(
-                (metric) => metric.userUsername !== HOUSE_BOT_USERNAME
-              )}
-              contractId={contract.id}
-              currentUser={user}
-              currentUserMetrics={contractMetrics}
+          {(outcomeType === 'FREE_RESPONSE' ||
+            outcomeType === 'MULTIPLE_CHOICE') && (
+            <>
+              <Spacer h={4} />
+              <AnswersPanel
+                contract={contract}
+                onAnswerCommentClick={onAnswerCommentClick}
+                showResolver={showResolver}
+              />
+              <Spacer h={4} />
+            </>
+          )}
+
+          {outcomeType === 'NUMERIC' && (
+            <AlertBox
+              title="Warning"
+              text="Distributional numeric markets were introduced as an experimental feature and are now deprecated."
             />
-            <Spacer h={12} />
-          </>
-        )}
+          )}
 
-        <UserBetsSummary
-          className="mt-4 mb-2 px-2"
-          contract={contract}
-          initialMetrics={contractMetrics}
-        />
+          {isCreator && !isResolved && !isClosed && (
+            <>
+              {showResolver && <Spacer h={4} />}
+              <CreatorSharePanel contract={contract} />
+            </>
+          )}
 
-        <div ref={tabsContainerRef}>
-          <ContractTabs
+          {outcomeType === 'NUMERIC' && allowTrade && (
+            <NumericBetPanel className="xl:hidden" contract={contract} />
+          )}
+
+          {isResolved && resolution !== 'CANCEL' && (
+            <>
+              <ContractLeaderboard
+                topContractMetrics={topContractMetrics.filter(
+                  (metric) => metric.userUsername !== HOUSE_BOT_USERNAME
+                )}
+                contractId={contract.id}
+                currentUser={user}
+                currentUserMetrics={contractMetrics}
+              />
+              <Spacer h={12} />
+            </>
+          )}
+
+          <UserBetsSummary
+            className="mt-4 mb-2 px-2"
             contract={contract}
-            bets={bets}
-            totalBets={totalBets}
-            comments={comments}
-            userPositionsByOutcome={userPositionsByOutcome}
-            answerResponse={answerResponse}
-            onCancelAnswerResponse={onCancelAnswerResponse}
-            blockedUserIds={blockedUserIds}
-            activeIndex={activeTabIndex}
-            setActiveIndex={setActiveTabIndex}
+            initialMetrics={contractMetrics}
           />
-        </div>
-      </Col>
-      <RecommendedContractsWidget contract={contract} />
+
+          <div ref={tabsContainerRef}>
+            <ContractTabs
+              contract={contract}
+              bets={bets}
+              totalBets={totalBets}
+              comments={comments}
+              userPositionsByOutcome={userPositionsByOutcome}
+              totalPositions={totalPositions}
+              answerResponse={answerResponse}
+              onCancelAnswerResponse={onCancelAnswerResponse}
+              blockedUserIds={blockedUserIds}
+              activeIndex={activeTabIndex}
+              setActiveIndex={setActiveTabIndex}
+            />
+          </div>
+        </Col>
+        <RelatedContractsList
+          className="hidden min-h-full max-w-[375px] xl:flex"
+          contracts={relatedMarkets}
+          onContractClick={(c) =>
+            track('click related market', { contractId: c.id })
+          }
+          loadMore={loadMore}
+        />
+      </Row>
+      <RelatedContractsList
+        className="max-w-[600px] xl:hidden"
+        contracts={relatedMarkets}
+        onContractClick={(c) =>
+          track('click related market', { contractId: c.id })
+        }
+        loadMore={loadMore}
+      />
       <Spacer className="xl:hidden" h={10} />
       <ScrollToTopButton className="fixed bottom-16 right-2 z-20 lg:bottom-2 xl:hidden" />
-    </Page>
+    </>
   )
 }
 
-function ContractPageSidebar(props: { contract: Contract }) {
-  const { contract } = props
-  const { creatorId, isResolved, outcomeType } = contract
-  const user = useUser()
-  const isCreator = user?.id === creatorId
-  const isBinary = outcomeType === 'BINARY'
-  const isPseudoNumeric = outcomeType === 'PSEUDO_NUMERIC'
-  const isNumeric = outcomeType === 'NUMERIC'
-  const allowTrade = tradingAllowed(contract)
-  const isAdmin = useAdmin()
-  const allowResolve = !isResolved && (isCreator || isAdmin) && !!user
+export function ContractSEO(props: {
+  contract: Contract
+  /** Base64 encoded points */
+  points?: string
+}) {
+  const { contract, points } = props
+  const { question, creatorUsername, slug } = contract
 
-  const hasSidePanel =
-    (isBinary || isNumeric || isPseudoNumeric) && (allowTrade || allowResolve)
+  const seoDesc = getSeoDescription(contract)
+  const ogCardProps = removeUndefinedProps({
+    ...getContractOGProps(contract),
+    points,
+  })
 
-  return hasSidePanel ? (
-    <Col className="gap-4">
-      {allowTrade &&
-        (isNumeric ? (
-          <NumericBetPanel className="hidden xl:flex" contract={contract} />
-        ) : (
-          <BetPanel
-            className="hidden xl:flex"
-            contract={contract as CPMMBinaryContract}
-          />
-        ))}
-    </Col>
-  ) : null
+  return (
+    <SEO
+      title={question}
+      description={seoDesc}
+      url={`/${creatorUsername}/${slug}`}
+      ogProps={{ props: ogCardProps, endpoint: 'market' }}
+    />
+  )
 }
-
-const RecommendedContractsWidget = memo(
-  function RecommendedContractsWidget(props: { contract: Contract }) {
-    const { contract } = props
-    const user = useUser()
-    const [recommendations, setRecommendations] = useState<Contract[]>([])
-    useEffect(() => {
-      if (user) {
-        getRecommendedContracts(contract, user.id, 6).then(setRecommendations)
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [contract.id, user?.id])
-    if (recommendations.length === 0) {
-      return null
-    }
-    return (
-      <Col className="mt-2 gap-2 px-2 sm:px-1">
-        <Title className="text-gray-700" text="Related markets" />
-        <ContractsGrid contracts={recommendations} trackingPostfix=" related" />
-      </Col>
-    )
-  }
-)

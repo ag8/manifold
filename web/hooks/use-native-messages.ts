@@ -13,7 +13,7 @@ export const useNativeMessages = (
       return
     }
     const { type, data } = event
-    console.log('Received native event: ', event)
+    console.log('Received native event type: ', type)
     if (messageTypes.includes(type)) {
       onMessageReceived(type, data)
     }
@@ -26,6 +26,5 @@ export const useNativeMessages = (
       document.removeEventListener('message', handleNativeMessage)
       window.removeEventListener('message', handleNativeMessage)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }
